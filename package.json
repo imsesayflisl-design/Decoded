@@ -21,6 +21,18 @@
     "Programming Languages",
     "Other"
   ],
+  "keywords": [
+    "error",
+    "explain",
+    "ai",
+    "debugging",
+    "learning",
+    "teaching",
+    "claude",
+    "gpt",
+    "gemini",
+    "fix errors"
+  ],
   "main": "./dist/extension.js",
   "activationEvents": [],
   "contributes": {
