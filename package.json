@@ -10,7 +10,7 @@
   "icon": "media/icon.png",
   "repository": {
     "type": "git",
-    "url": "https://github.com/idriss-sesay/decoded"
+    "url": "https://github.com/imsesayflisl-design/Decoded"
   },
   "engines": {
     "vscode": "^1.90.0"

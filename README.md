@@ -2,6 +2,15 @@
 
 A VS Code extension that explains your errors to teach you, right where you code.
 
+## Install (VS Code, Cursor, Antigravity, or any VS Code-compatible editor)
+
+1. Download the latest `decoded-x.x.x.vsix` from the [Releases page](https://github.com/imsesayflisl-design/Decoded/releases).
+2. In your editor, open the **Extensions** panel → click the `…` menu (top right) → **Install from VSIX…** → pick the downloaded file.
+   - Or from a terminal: `code --install-extension decoded-0.0.1.vsix` (use `cursor`/`antigravity`/your editor's CLI instead of `code`).
+3. Click the **Decoded** icon in the activity bar, and set an API key when asked (or run **Decoded: Set API Key**). Works with Anthropic, OpenAI, or Google Gemini — bring your own key.
+
+> Each editor stores its own keys, so enter your key once per editor.
+
 Decoded watches your code for problems and lists them in its sidebar as they appear. Click one (or trigger Decoded on a squiggle) and it explains the error in four parts — what it means, why it's happening in your code, how to fix it, and how to avoid it next time — as a chat reply, with follow-up questions welcome. It reads the error and surrounding code straight from VS Code, so there's nothing to copy and paste.
 
 ## Features
