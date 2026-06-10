@@ -1,0 +1,192 @@
+{
+  "name": "decoded",
+  "displayName": "Decoded",
+  "description": "Explains your coding errors to teach you, right where you code.",
+  "version": "0.0.1",
+  "publisher": "idriss-sesay",
+  "author": {
+    "name": "Idriss M. Sesay"
+  },
+  "icon": "media/icon.png",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/idriss-sesay/decoded"
+  },
+  "engines": {
+    "vscode": "^1.90.0"
+  },
+  "license": "MIT",
+  "categories": [
+    "Education",
+    "Programming Languages",
+    "Other"
+  ],
+  "main": "./dist/extension.js",
+  "activationEvents": [],
+  "contributes": {
+    "configuration": {
+      "title": "Decoded",
+      "properties": {
+        "decoded.provider": {
+          "type": "string",
+          "enum": ["anthropic", "openai", "gemini"],
+          "enumItemLabels": ["Anthropic (Claude)", "OpenAI (GPT)", "Google (Gemini)"],
+          "default": "anthropic",
+          "description": "Which AI provider Decoded uses to explain errors."
+        },
+        "decoded.anthropic.model": {
+          "type": "string",
+          "enum": ["claude-opus-4-8", "claude-fable-5", "claude-sonnet-4-6", "claude-haiku-4-5"],
+          "default": "claude-opus-4-8",
+          "description": "Claude model used when the provider is Anthropic."
+        },
+        "decoded.openai.model": {
+          "type": "string",
+          "enum": ["gpt-5-mini", "gpt-5", "gpt-4.1", "gpt-4o-mini"],
+          "default": "gpt-5-mini",
+          "description": "GPT model used when the provider is OpenAI."
+        },
+        "decoded.gemini.model": {
+          "type": "string",
+          "enum": ["gemini-2.5-flash", "gemini-2.5-pro", "gemini-2.0-flash"],
+          "default": "gemini-2.5-flash",
+          "description": "Gemini model used when the provider is Google."
+        },
+        "decoded.errors.includeWarnings": {
+          "type": "boolean",
+          "default": false,
+          "description": "Also list warnings (not just errors) in the Decoded sidebar."
+        },
+        "decoded.errors.maxListed": {
+          "type": "number",
+          "default": 50,
+          "description": "Maximum number of problems listed in the Decoded sidebar."
+        }
+      }
+    },
+    "commands": [
+      {
+        "command": "decoded.explainError",
+        "title": "Decoded: Explain Error"
+      },
+      {
+        "command": "decoded.scanWorkspace",
+        "title": "Decoded: Scan Workspace for Errors",
+        "icon": "$(search)"
+      },
+      {
+        "command": "decoded.setApiKey",
+        "title": "Decoded: Set API Key"
+      },
+      {
+        "command": "decoded.clearApiKey",
+        "title": "Decoded: Clear API Key"
+      },
+      {
+        "command": "decoded.selectProvider",
+        "title": "Decoded: Select AI Provider",
+        "icon": "$(settings-gear)"
+      },
+      {
+        "command": "decoded.newChat",
+        "title": "Decoded: New Chat",
+        "icon": "$(add)"
+      },
+      {
+        "command": "decoded.clearHistory",
+        "title": "Decoded: Clear History",
+        "icon": "$(trash)"
+      }
+    ],
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "decoded",
+          "title": "Decoded",
+          "icon": "media/decoded.svg"
+        }
+      ]
+    },
+    "views": {
+      "decoded": [
+        {
+          "type": "webview",
+          "id": "decoded.chatView",
+          "name": "Chat",
+          "contextualTitle": "Decoded"
+        }
+      ]
+    },
+    "menus": {
+      "editor/context": [
+        {
+          "command": "decoded.explainError",
+          "group": "navigation@9",
+          "when": "editorTextFocus"
+        }
+      ],
+      "view/title": [
+        {
+          "command": "decoded.newChat",
+          "when": "view == decoded.chatView",
+          "group": "navigation@1"
+        },
+        {
+          "command": "decoded.selectProvider",
+          "when": "view == decoded.chatView",
+          "group": "navigation@2"
+        },
+        {
+          "command": "decoded.clearHistory",
+          "when": "view == decoded.chatView",
+          "group": "navigation@3"
+        }
+      ]
+    },
+    "keybindings": [
+      {
+        "command": "decoded.explainError",
+        "key": "ctrl+alt+d",
+        "mac": "cmd+alt+d",
+        "when": "editorTextFocus"
+      }
+    ]
+  },
+  "scripts": {
+    "vscode:prepublish": "npm run package",
+    "compile": "npm run check-types && npm run lint && node esbuild.js",
+    "watch": "npm-run-all -p watch:*",
+    "watch:esbuild": "node esbuild.js --watch",
+    "watch:tsc": "tsc --noEmit --watch --project tsconfig.json",
+    "package": "npm run check-types && npm run lint && node esbuild.js --production",
+    "compile-tests": "tsc -p . --outDir out",
+    "watch-tests": "tsc -p . -w --outDir out",
+    "pretest": "npm run compile-tests && npm run compile && npm run lint",
+    "check-types": "tsc --noEmit",
+    "lint": "eslint src",
+    "test": "vscode-test",
+    "build-icon": "node scripts/build-icon.js"
+  },
+  "devDependencies": {
+    "@resvg/resvg-js": "^2.6.2",
+    "@types/mocha": "^10.0.10",
+    "@types/node": "^20.x",
+    "@types/vscode": "^1.90.0",
+    "@typescript-eslint/eslint-plugin": "^8.61.0",
+    "@typescript-eslint/parser": "^8.61.0",
+    "@vscode/test-cli": "^0.0.12",
+    "@vscode/test-electron": "^3.0.0",
+    "esbuild": "^0.23.0",
+    "eslint": "^10.4.1",
+    "mocha": "^11.7.6",
+    "npm-run-all": "^4.1.5",
+    "typescript": "^5.5.0"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.104.1",
+    "@google/genai": "^2.8.0",
+    "highlight.js": "^11.11.1",
+    "openai": "^6.42.0",
+    "zod": "^3.23.0"
+  }
+}
