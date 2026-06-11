@@ -1,6 +1,6 @@
 # Decoded
 
-A VS Code extension that explains your errors to teach you, right where you code.
+An extension for VS Code and compatible editors that explains your errors to teach you, right where you code. Works in VS Code, Cursor, VSCodium, Windsurf, Gitpod, GitHub Codespaces, code-server, and any other VS Code-compatible editor.
 
 ## Install (VS Code, Cursor, Antigravity, or any VS Code-compatible editor)
 
@@ -11,7 +11,7 @@ A VS Code extension that explains your errors to teach you, right where you code
 
 > Each editor stores its own keys, so enter your key once per editor.
 
-Decoded watches your code for problems and lists them in its sidebar as they appear. Click one (or trigger Decoded on a squiggle) and it explains the error in four parts — what it means, why it's happening in your code, how to fix it, and how to avoid it next time — as a chat reply, with follow-up questions welcome. It reads the error and surrounding code straight from VS Code, so there's nothing to copy and paste.
+Decoded watches your code for problems and lists them in its sidebar as they appear. Click one (or trigger Decoded on a squiggle) and it explains the error in four parts — what it means, why it's happening in your code, how to fix it, and how to avoid it next time — as a chat reply, with follow-up questions welcome. It reads the error and surrounding code straight from your editor, so there's nothing to copy and paste.
 
 ## Features
 
@@ -19,9 +19,9 @@ Decoded watches your code for problems and lists them in its sidebar as they app
 - **Automatic error detection** — Decoded watches diagnostics across your workspace and lists them live. The AI is only called when you click a problem (or trigger Explain Error), so idle watching costs nothing.
 - **Workspace scan + fix-it-for-me** — when you open the sidebar, Decoded reads your codebase (opens source files so language servers report problems), tells you what it found, and **asks before fixing anything**. Say yes and it fixes errors one by one (capped at 10 per run, unsaved so Undo works). Trigger a scan anytime with the **Scan** button, by typing "scan my code" in the chat, or via **Decoded: Scan Workspace for Errors**.
 - **Four-part teaching answer** — what it means → why → how to fix (Before/After, with an Apply fix button) → how to avoid next time, with syntax highlighting.
-- **Your choice of AI** — Anthropic (Claude), OpenAI (GPT), or Google (Gemini), each with selectable models. Switch any time with **Decoded: Select AI Provider**.
+- **Your choice of AI** — Anthropic (Claude), OpenAI (GPT), or Google (Gemini), each with selectable models. Switch any time with **Decoded: Choose AI Model** — your provider and model are remembered until you change them.
 - **Native triggers** — lightbulb quick-fix on diagnostics, right-click menu, and a configurable keybinding (`Ctrl+Alt+D` / `Cmd+Alt+D`).
-- **Secure keys** — API keys are stored per provider in VS Code SecretStorage (never in settings, code, or logs).
+- **Secure keys** — API keys are stored per provider in your editor's secret storage (SecretStorage — never in settings, code, or logs). Keys for all providers are kept, so switching providers never makes you re-enter a key.
 - **History** — past explanations are saved locally and reopen from the History drawer in the sidebar.
 
 ## Settings
@@ -30,8 +30,8 @@ Decoded watches your code for problems and lists them in its sidebar as they app
 | --- | --- |
 | `decoded.provider` | `anthropic` (default), `openai`, or `gemini` |
 | `decoded.anthropic.model` | Claude model (default `claude-opus-4-8`) |
-| `decoded.openai.model` | GPT model (default `gpt-5-mini`) |
-| `decoded.gemini.model` | Gemini model (default `gemini-2.5-flash`) |
+| `decoded.openai.model` | GPT model (default `gpt-5.4-mini`) |
+| `decoded.gemini.model` | Gemini model (default `gemini-3.5-flash`) |
 | `decoded.errors.includeWarnings` | Also list warnings in the sidebar (default off) |
 | `decoded.errors.maxListed` | Cap on listed problems (default 50) |
 
@@ -82,9 +82,14 @@ Press **F5** in VS Code to launch the Extension Development Host with Decoded lo
 then click the Decoded icon in the activity bar. Set a key once with
 **Decoded: Set API Key** (you'll be asked which provider it's for).
 
-## Packaging
+## Packaging & publishing
 
 ```bash
-npx @vscode/vsce package --no-dependencies   # → decoded-0.0.1.vsix
+npm run vsix                                 # → decoded-0.0.1.vsix
 code --install-extension decoded-0.0.1.vsix  # install locally
 ```
+
+Decoded is published to **both** registries so every compatible editor can install it:
+
+- **VS Code Marketplace** (VS Code): `npm run publish:vscode` — needs a [VS Code Marketplace PAT](https://code.visualstudio.com/api/working-with-extensions/publishing-extension) (`vsce login idriss-sesay` or `VSCE_PAT` env var).
+- **Open VSX** (Cursor, VSCodium, Gitpod, code-server, …): `npm run publish:openvsx` — needs an [Open VSX token](https://open-vsx.org/) (`OVSX_PAT` env var or `npm run publish:openvsx -- -p <token>`).

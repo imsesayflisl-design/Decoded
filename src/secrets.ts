@@ -49,7 +49,7 @@ async function promptForKey(
 ): Promise<string | undefined> {
   const entered = await vscode.window.showInputBox({
     title: `Decoded — ${provider.label} API Key`,
-    prompt: `Enter your ${provider.label} API key. It is stored securely in VS Code SecretStorage.`,
+    prompt: `Enter your ${provider.label} API key. It is stored securely in your editor's secret storage.`,
     password: true,
     ignoreFocusOut: true,
     placeHolder: provider.keyPlaceholder,
@@ -104,14 +104,39 @@ export async function setApiKeyCommand(
   );
 }
 
-// "Decoded: Clear API Key" — pick a provider, then remove its stored key.
+// "Decoded: Clear API Keys" — pick one provider (or all), then remove the
+// stored key(s).
 export async function clearApiKeyCommand(
   context: vscode.ExtensionContext
 ): Promise<void> {
-  const provider = await pickProvider("Which provider's API key do you want to clear?");
-  if (!provider) {
+  const ALL = "__all__";
+  const picked = await vscode.window.showQuickPick(
+    [
+      ...PROVIDERS.map((p) => ({ label: p.label, id: p.id as string })),
+      { label: "All providers", id: ALL },
+    ],
+    { placeHolder: "Which provider's API key do you want to clear?" }
+  );
+  if (!picked) {
     return;
   }
+  if (picked.id === ALL) {
+    let cleared = 0;
+    for (const p of PROVIDERS) {
+      const existing = await getApiKey(context, p.id);
+      if (existing) {
+        await context.secrets.delete(secretKeyFor(p.id));
+        cleared++;
+      }
+    }
+    vscode.window.showInformationMessage(
+      cleared > 0
+        ? `Decoded: Cleared ${cleared} API key${cleared === 1 ? "" : "s"}.`
+        : "Decoded: No API keys are currently set."
+    );
+    return;
+  }
+  const provider = getProvider(picked.id as ProviderId);
   const existing = await getApiKey(context, provider.id);
   if (!existing) {
     vscode.window.showInformationMessage(

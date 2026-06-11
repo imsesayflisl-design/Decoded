@@ -21,7 +21,7 @@ import { fixAllErrors } from "./autofix";
 const SCAN_INTENT =
   /\b(scan|find (the )?errors?|look for (any )?errors?|check (my |the )?(code|project|workspace|codebase)|read (my |the )?(code|project|workspace|codebase))\b/i;
 
-// "Decoded: Select AI Provider" — pick a provider, then a model for it.
+// "Decoded: Choose AI Model" — pick a provider, then a model for it.
 async function selectProviderCommand(): Promise<void> {
   const active = getActiveProvider();
   const pickedProvider = await vscode.window.showQuickPick(

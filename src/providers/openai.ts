@@ -27,8 +27,8 @@ function toProviderError(err: unknown): never {
 export const openaiProvider: LLMProvider = {
   id: "openai",
   label: "OpenAI (GPT)",
-  models: ["gpt-5-mini", "gpt-5", "gpt-4.1", "gpt-4o-mini"],
-  defaultModel: "gpt-5-mini",
+  models: ["gpt-5.5", "gpt-5.4", "gpt-5.4-mini"],
+  defaultModel: "gpt-5.4-mini",
   keyPlaceholder: "sk-...",
 
   async complete(

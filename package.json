@@ -54,14 +54,14 @@
         },
         "decoded.openai.model": {
           "type": "string",
-          "enum": ["gpt-5-mini", "gpt-5", "gpt-4.1", "gpt-4o-mini"],
-          "default": "gpt-5-mini",
+          "enum": ["gpt-5.5", "gpt-5.4", "gpt-5.4-mini"],
+          "default": "gpt-5.4-mini",
           "description": "GPT model used when the provider is OpenAI."
         },
         "decoded.gemini.model": {
           "type": "string",
-          "enum": ["gemini-2.5-flash", "gemini-2.5-pro", "gemini-2.0-flash"],
-          "default": "gemini-2.5-flash",
+          "enum": ["gemini-3.5-flash", "gemini-2.5-pro", "gemini-3.1-flash-lite"],
+          "default": "gemini-3.5-flash",
           "description": "Gemini model used when the provider is Google."
         },
         "decoded.errors.includeWarnings": {
@@ -92,11 +92,11 @@
       },
       {
         "command": "decoded.clearApiKey",
-        "title": "Decoded: Clear API Key"
+        "title": "Decoded: Clear API Keys"
       },
       {
         "command": "decoded.selectProvider",
-        "title": "Decoded: Select AI Provider",
+        "title": "Decoded: Choose AI Model",
         "icon": "$(settings-gear)"
       },
       {
@@ -177,10 +177,15 @@
     "check-types": "tsc --noEmit",
     "lint": "eslint src",
     "test": "vscode-test",
-    "build-icon": "node scripts/build-icon.js"
+    "build-icon": "node scripts/build-icon.js",
+    "vsix": "vsce package --no-dependencies",
+    "publish:vscode": "vsce publish --no-dependencies",
+    "publish:openvsx": "ovsx publish --no-dependencies"
   },
   "devDependencies": {
     "@resvg/resvg-js": "^2.6.2",
+    "@vscode/vsce": "^3.0.0",
+    "ovsx": "^0.10.0",
     "@types/mocha": "^10.0.10",
     "@types/node": "^20.x",
     "@types/vscode": "^1.90.0",
