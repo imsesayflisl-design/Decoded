@@ -166,6 +166,17 @@ export function activate(context: vscode.ExtensionContext) {
 
   // Follow-up questions typed into the chat input.
   chatView.onFollowUp(async (text) => {
+    // "/model" opens the provider + model picker right from the chat.
+    if (/^\/(model|provider|ai)\b/i.test(text.trim())) {
+      chatView.addUserMessage(text);
+      await selectProviderCommand();
+      chatView.postConfig();
+      const { provider, model } = getActiveProvider();
+      chatView.addAssistantMarkdown(
+        `You're using **${provider.label} · ${model}**. Type \`/model\` any time to switch.`
+      );
+      return;
+    }
     // "scan my code" / "look for errors" runs a scan instead of asking the AI.
     if (SCAN_INTENT.test(text)) {
       chatView.addUserMessage(text);

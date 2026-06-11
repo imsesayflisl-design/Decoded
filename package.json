@@ -43,7 +43,7 @@
           "type": "string",
           "enum": ["anthropic", "openai", "gemini"],
           "enumItemLabels": ["Anthropic (Claude)", "OpenAI (GPT)", "Google (Gemini)"],
-          "default": "anthropic",
+          "default": "openai",
           "description": "Which AI provider Decoded uses to explain errors."
         },
         "decoded.anthropic.model": {

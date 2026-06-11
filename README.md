@@ -19,7 +19,7 @@ Decoded watches your code for problems and lists them in its sidebar as they app
 - **Automatic error detection** — Decoded watches diagnostics across your workspace and lists them live. The AI is only called when you click a problem (or trigger Explain Error), so idle watching costs nothing.
 - **Workspace scan + fix-it-for-me** — when you open the sidebar, Decoded reads your codebase (opens source files so language servers report problems), tells you what it found, and **asks before fixing anything**. Say yes and it fixes errors one by one (capped at 10 per run, unsaved so Undo works). Trigger a scan anytime with the **Scan** button, by typing "scan my code" in the chat, or via **Decoded: Scan Workspace for Errors**.
 - **Four-part teaching answer** — what it means → why → how to fix (Before/After, with an Apply fix button) → how to avoid next time, with syntax highlighting.
-- **Your choice of AI** — Anthropic (Claude), OpenAI (GPT), or Google (Gemini), each with selectable models. Switch any time with **Decoded: Choose AI Model** — your provider and model are remembered until you change them.
+- **Your choice of AI** — OpenAI (GPT, default), Anthropic (Claude), or Google (Gemini), each with selectable models. Switch any time with **Decoded: Choose AI Model** or by typing `/model` in the chat — your provider and model are remembered until you change them.
 - **Native triggers** — lightbulb quick-fix on diagnostics, right-click menu, and a configurable keybinding (`Ctrl+Alt+D` / `Cmd+Alt+D`).
 - **Secure keys** — API keys are stored per provider in your editor's secret storage (SecretStorage — never in settings, code, or logs). Keys for all providers are kept, so switching providers never makes you re-enter a key.
 - **History** — past explanations are saved locally and reopen from the History drawer in the sidebar.
@@ -28,7 +28,7 @@ Decoded watches your code for problems and lists them in its sidebar as they app
 
 | Setting | Description |
 | --- | --- |
-| `decoded.provider` | `anthropic` (default), `openai`, or `gemini` |
+| `decoded.provider` | `openai` (default), `anthropic`, or `gemini` |
 | `decoded.anthropic.model` | Claude model (default `claude-opus-4-8`) |
 | `decoded.openai.model` | GPT model (default `gpt-5.4-mini`) |
 | `decoded.gemini.model` | Gemini model (default `gemini-3.5-flash`) |

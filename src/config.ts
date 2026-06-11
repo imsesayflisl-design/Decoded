@@ -8,10 +8,10 @@ const VALID_PROVIDERS: ProviderId[] = ["anthropic", "openai", "gemini"];
 export function getActiveProviderId(): ProviderId {
   const raw = vscode.workspace
     .getConfiguration("decoded")
-    .get<string>("provider", "anthropic");
+    .get<string>("provider", "openai");
   return (VALID_PROVIDERS as string[]).includes(raw)
     ? (raw as ProviderId)
-    : "anthropic";
+    : "openai";
 }
 
 // The model configured for a provider, or undefined to use its default.
