@@ -1,5 +1,7 @@
 .vscode/**
 .vscode-test/**
+.env
+.env.local
 out/**
 node_modules/**
 src/**
