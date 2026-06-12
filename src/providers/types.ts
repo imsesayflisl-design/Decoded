@@ -3,7 +3,7 @@
 // All Decoded-specific logic (prompt, JSON contract, validation) lives in
 // providers/explain.ts so it works identically for every provider.
 
-export type ProviderId = "anthropic" | "openai" | "gemini";
+export type ProviderId = "anthropic" | "openai" | "gemini" | "openrouter";
 
 // One conversational turn, provider-neutral.
 export interface ChatTurn {

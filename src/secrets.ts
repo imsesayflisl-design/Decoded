@@ -1,6 +1,7 @@
 import * as vscode from "vscode";
 import type { LLMProvider, ProviderId } from "./providers/types";
 import { getProvider, PROVIDERS } from "./providers";
+import { getEnvFileApiKey } from "./envFile";
 
 // One SecretStorage key per provider. Keys are NEVER written to settings,
 // code, or logs.
@@ -27,12 +28,17 @@ export async function migrateLegacyApiKey(
   await context.secrets.delete(LEGACY_ANTHROPIC_KEY);
 }
 
-// Returns the stored key for a provider, or undefined if none is set.
+// Returns the key for a provider: SecretStorage first, then a .env.local
+// fallback (so keys in that file are picked up without any prompt).
 export async function getApiKey(
   context: vscode.ExtensionContext,
   provider: ProviderId
 ): Promise<string | undefined> {
-  return context.secrets.get(secretKeyFor(provider));
+  const stored = await context.secrets.get(secretKeyFor(provider));
+  if (stored) {
+    return stored;
+  }
+  return getEnvFileApiKey(context, provider);
 }
 
 export async function storeApiKey(
@@ -123,7 +129,8 @@ export async function clearApiKeyCommand(
   if (picked.id === ALL) {
     let cleared = 0;
     for (const p of PROVIDERS) {
-      const existing = await getApiKey(context, p.id);
+      // Check secret storage directly — env-file keys can't be cleared here.
+      const existing = await context.secrets.get(secretKeyFor(p.id));
       if (existing) {
         await context.secrets.delete(secretKeyFor(p.id));
         cleared++;
@@ -137,7 +144,7 @@ export async function clearApiKeyCommand(
     return;
   }
   const provider = getProvider(picked.id as ProviderId);
-  const existing = await getApiKey(context, provider.id);
+  const existing = await context.secrets.get(secretKeyFor(provider.id));
   if (!existing) {
     vscode.window.showInformationMessage(
       `Decoded: No ${provider.label} API key is currently set.`

@@ -2,7 +2,7 @@
   "name": "decoded",
   "displayName": "Decoded",
   "description": "Explains your coding errors to teach you, right where you code.",
-  "version": "0.0.1",
+  "version": "0.0.2",
   "publisher": "idriss-sesay",
   "author": {
     "name": "Idriss M. Sesay"
@@ -31,6 +31,7 @@
     "claude",
     "gpt",
     "gemini",
+    "openrouter",
     "fix errors"
   ],
   "main": "./dist/extension.js",
@@ -41,8 +42,8 @@
       "properties": {
         "decoded.provider": {
           "type": "string",
-          "enum": ["anthropic", "openai", "gemini"],
-          "enumItemLabels": ["Anthropic (Claude)", "OpenAI (GPT)", "Google (Gemini)"],
+          "enum": ["anthropic", "openai", "gemini", "openrouter"],
+          "enumItemLabels": ["Anthropic (Claude)", "OpenAI (GPT)", "Google (Gemini)", "OpenRouter"],
           "default": "openai",
           "description": "Which AI provider Decoded uses to explain errors."
         },
@@ -63,6 +64,12 @@
           "enum": ["gemini-3.5-flash", "gemini-2.5-pro", "gemini-3.1-flash-lite"],
           "default": "gemini-3.5-flash",
           "description": "Gemini model used when the provider is Google."
+        },
+        "decoded.openrouter.model": {
+          "type": "string",
+          "enum": ["openrouter/auto", "meta-llama/llama-3.3-70b-instruct:free", "deepseek/deepseek-chat-v3-0324:free"],
+          "default": "openrouter/auto",
+          "description": "Model used when the provider is OpenRouter."
         },
         "decoded.errors.includeWarnings": {
           "type": "boolean",

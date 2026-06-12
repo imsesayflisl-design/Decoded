@@ -3,7 +3,12 @@ import type { ProviderId } from "./providers/types";
 
 // Typed access to the decoded.* settings.
 
-const VALID_PROVIDERS: ProviderId[] = ["anthropic", "openai", "gemini"];
+const VALID_PROVIDERS: ProviderId[] = [
+  "anthropic",
+  "openai",
+  "gemini",
+  "openrouter",
+];
 
 export function getActiveProviderId(): ProviderId {
   const raw = vscode.workspace

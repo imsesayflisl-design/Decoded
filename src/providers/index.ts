@@ -2,6 +2,7 @@ import { getActiveProviderId, getConfiguredModel } from "../config";
 import { anthropicProvider } from "./anthropic";
 import { geminiProvider } from "./gemini";
 import { openaiProvider } from "./openai";
+import { openrouterProvider } from "./openrouter";
 import type { LLMProvider, ProviderId } from "./types";
 
 // All providers, in the order they appear in pickers.
@@ -9,6 +10,7 @@ export const PROVIDERS: LLMProvider[] = [
   anthropicProvider,
   openaiProvider,
   geminiProvider,
+  openrouterProvider,
 ];
 
 export function getProvider(id: ProviderId): LLMProvider {
