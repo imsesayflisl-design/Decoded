@@ -3,7 +3,9 @@ import type { Explanation } from "./schema";
 import { applyFix, type ExplainSource } from "./applyFix";
 import type { HistoryStore } from "./history";
 import type { ErrorItem } from "./diagnostics";
-import { getActiveProvider } from "./providers";
+import { getActiveProvider, PROVIDERS } from "./providers";
+import { setActiveProviderId, setConfiguredModel } from "./config";
+import type { ProviderId } from "./providers/types";
 
 // An action button shown on a prompt card ("Yes, fix them" / "Not now").
 export interface PromptAction {
@@ -32,6 +34,16 @@ interface HistorySummary {
   timestamp: number;
 }
 
+// A piece of context the user attached with the + button. The webview only
+// holds these labels — the actual file content is resolved extension-side at
+// send time.
+export interface ContextChip {
+  id: string;
+  type: "file" | "selection" | "diagnostic";
+  label: string;
+  detail: string;
+}
+
 // Messages arriving from the webview script.
 interface WebviewMessage {
   type?: string;
@@ -40,6 +52,9 @@ interface WebviewMessage {
   messageId?: string;
   id?: string;
   action?: string;
+  providerId?: string;
+  model?: string;
+  contextIds?: unknown;
 }
 
 function nextId(): string {
@@ -78,8 +93,15 @@ export class DecodedChatViewProvider
   // Events the extension wires to the explain/chat flows.
   private readonly explainEmitter = new vscode.EventEmitter<string>();
   readonly onExplainDiagnostic = this.explainEmitter.event;
-  private readonly followUpEmitter = new vscode.EventEmitter<string>();
+  private readonly followUpEmitter = new vscode.EventEmitter<{
+    text: string;
+    contextIds: string[];
+  }>();
   readonly onFollowUp = this.followUpEmitter.event;
+  private readonly pickContextEmitter = new vscode.EventEmitter<void>();
+  readonly onPickContext = this.pickContextEmitter.event;
+  private readonly removeContextEmitter = new vscode.EventEmitter<string>();
+  readonly onRemoveContext = this.removeContextEmitter.event;
   private readonly newChatEmitter = new vscode.EventEmitter<void>();
   readonly onNewChat = this.newChatEmitter.event;
   private readonly loadHistoryEmitter = new vscode.EventEmitter<string>();
@@ -188,6 +210,11 @@ export class DecodedChatViewProvider
     this.post({ type: "config", ...this.configPayload() });
   }
 
+  // Shows a context pill above the input (result of the + button picker).
+  addContextChip(chip: ContextChip): void {
+    this.post({ type: "contextChip", chip });
+  }
+
   // --- Internals. ---
 
   private push(item: TranscriptItem): void {
@@ -199,9 +226,31 @@ export class DecodedChatViewProvider
     this.view?.webview.postMessage(message);
   }
 
-  private configPayload(): { provider: string; model: string } {
+  // Current provider/model plus the full catalog so the webview can render
+  // its own model picker (like Copilot's dropdown in the input box).
+  private configPayload(): {
+    providerId: string;
+    provider: string;
+    model: string;
+    providers: {
+      id: string;
+      label: string;
+      models: string[];
+      defaultModel: string;
+    }[];
+  } {
     const { provider, model } = getActiveProvider();
-    return { provider: provider.label, model };
+    return {
+      providerId: provider.id,
+      provider: provider.label,
+      model,
+      providers: PROVIDERS.map((p) => ({
+        id: p.id,
+        label: p.label,
+        models: p.models,
+        defaultModel: p.defaultModel,
+      })),
+    };
   }
 
   private historySummaries(): HistorySummary[] {
@@ -236,7 +285,35 @@ export class DecodedChatViewProvider
         break;
       case "followUp":
         if (typeof msg.text === "string" && msg.text.trim() && !this.busy) {
-          this.followUpEmitter.fire(msg.text.trim());
+          const contextIds = Array.isArray(msg.contextIds)
+            ? msg.contextIds.filter((x): x is string => typeof x === "string")
+            : [];
+          this.followUpEmitter.fire({ text: msg.text.trim(), contextIds });
+        }
+        break;
+      case "selectModel": {
+        // The in-webview model picker; validate against the real catalog.
+        const provider = PROVIDERS.find((p) => p.id === msg.providerId);
+        if (
+          provider &&
+          typeof msg.model === "string" &&
+          provider.models.includes(msg.model)
+        ) {
+          await setActiveProviderId(provider.id as ProviderId);
+          await setConfiguredModel(provider.id as ProviderId, msg.model);
+          // The settings-change listener in extension.ts broadcasts the new
+          // config back to the webview.
+        }
+        break;
+      }
+      case "pickContext":
+        if (!this.busy) {
+          this.pickContextEmitter.fire();
+        }
+        break;
+      case "removeContext":
+        if (typeof msg.id === "string") {
+          this.removeContextEmitter.fire(msg.id);
         }
         break;
       case "applyFix":
@@ -324,8 +401,17 @@ export class DecodedChatViewProvider
     <span class="decoded-spinner"></span><span id="busy-label">Thinking…</span>
   </div>
   <footer class="decoded-composer">
-    <textarea id="input" rows="2" placeholder="Ask a follow-up question…"></textarea>
-    <button id="send" type="button" title="Send">➤</button>
+    <div id="context-chips" class="decoded-chips" hidden></div>
+    <textarea id="input" rows="2" placeholder="Ask Decoded…"></textarea>
+    <div class="decoded-composer-bar">
+      <button id="add-context" class="decoded-icon-btn" type="button" title="Add context (file, selection, or error)">+</button>
+      <button id="model-btn" class="decoded-model-btn" type="button" title="Change AI model">
+        <span id="model-btn-label"></span><span class="decoded-caret">▾</span>
+      </button>
+      <span class="decoded-bar-spacer"></span>
+      <button id="send" class="decoded-icon-btn decoded-send" type="button" title="Send">➤</button>
+    </div>
+    <div id="model-menu" class="decoded-model-menu" hidden></div>
   </footer>
   <script nonce="${nonce}" src="${scriptUri}"></script>
 </body>
@@ -335,6 +421,8 @@ export class DecodedChatViewProvider
   dispose(): void {
     this.explainEmitter.dispose();
     this.followUpEmitter.dispose();
+    this.pickContextEmitter.dispose();
+    this.removeContextEmitter.dispose();
     this.newChatEmitter.dispose();
     this.loadHistoryEmitter.dispose();
     this.visibleEmitter.dispose();

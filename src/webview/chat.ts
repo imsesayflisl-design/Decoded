@@ -45,6 +45,24 @@ interface HistorySummary {
   timestamp: number;
 }
 
+// One provider and its models, sent by the extension so the model picker in
+// the composer can list everything without hardcoding.
+interface ProviderInfo {
+  id: string;
+  label: string;
+  models: string[];
+  defaultModel: string;
+}
+
+// A context pill above the input (the + button). Only labels live here; the
+// extension resolves the real file content when the message is sent.
+interface Chip {
+  id: string;
+  type: string;
+  label: string;
+  detail: string;
+}
+
 // --- DOM helpers. ---
 
 function el<K extends keyof HTMLElementTagNameMap>(
@@ -142,16 +160,35 @@ function renderProse(container: HTMLElement, text: string): void {
 
 const transcript = byId<HTMLElement>("transcript");
 
+// Copilot-style welcome screen: icon, title, and suggestion buttons that
+// send a message when clicked.
+const SUGGESTIONS = [
+  "Scan my code for errors",
+  "What can Decoded help me with?",
+  "How do I read error messages?",
+];
+
 function renderEmptyState(): void {
   const empty = el("div", "decoded-empty");
+  empty.appendChild(el("div", "decoded-welcome-icon", "✦"));
   empty.appendChild(el("h2", undefined, "Decoded"));
   empty.appendChild(
     el(
       "p",
       undefined,
-      "Errors in your code show up under Problems above. Click one and Decoded explains it in four parts — then ask follow-up questions below."
+      "I explain your errors and teach you while you code. Click a problem above, or start with one of these:"
     )
   );
+  const suggestions = el("div", "decoded-suggestions");
+  for (const text of SUGGESTIONS) {
+    const btn = el("button", "decoded-suggestion", text);
+    btn.type = "button";
+    btn.addEventListener("click", () =>
+      vscode.postMessage({ type: "followUp", text, contextIds: [] })
+    );
+    suggestions.appendChild(btn);
+  }
+  empty.appendChild(suggestions);
   transcript.appendChild(empty);
 }
 
@@ -249,6 +286,17 @@ function renderPrompt(item: {
   return card;
 }
 
+// Wraps an AI response with a small "✦ Provider" header row, Copilot-style.
+function assistantRow(node: HTMLElement): HTMLElement {
+  const wrap = el("div", "decoded-assistant-row");
+  const header = el("div", "decoded-msg-header");
+  header.appendChild(el("span", "decoded-msg-icon", "✦"));
+  header.appendChild(el("span", undefined, activeProviderLabel || "Decoded"));
+  wrap.appendChild(header);
+  wrap.appendChild(node);
+  return wrap;
+}
+
 function renderItem(item: TranscriptItem): void {
   clearEmptyState();
   let node: HTMLElement;
@@ -257,18 +305,19 @@ function renderItem(item: TranscriptItem): void {
       node = el("div", "decoded-msg decoded-msg-user", item.title);
       break;
     case "explanation":
-      node = renderExplanation(item);
+      node = assistantRow(renderExplanation(item));
       break;
     case "assistant": {
-      node = el("div", "decoded-msg decoded-msg-assistant");
-      node.appendChild(renderMarkdown(item.markdown));
+      const body = el("div", "decoded-msg decoded-msg-assistant");
+      body.appendChild(renderMarkdown(item.markdown));
+      node = assistantRow(body);
       break;
     }
     case "error":
       node = el("div", "decoded-msg decoded-msg-error", item.message);
       break;
     case "prompt":
-      node = renderPrompt(item);
+      node = assistantRow(renderPrompt(item));
       break;
   }
   transcript.appendChild(node);
@@ -379,24 +428,66 @@ const busyBar = byId<HTMLElement>("busy");
 const busyLabel = byId<HTMLElement>("busy-label");
 const input = byId<HTMLTextAreaElement>("input");
 const sendBtn = byId<HTMLButtonElement>("send");
+const addContextBtn = byId<HTMLButtonElement>("add-context");
+const modelBtn = byId<HTMLButtonElement>("model-btn");
+const modelBtnLabel = byId<HTMLElement>("model-btn-label");
+const modelMenu = byId<HTMLElement>("model-menu");
+const chipsRow = byId<HTMLElement>("context-chips");
 
 function setBusy(value: boolean, label?: string): void {
   busyBar.hidden = !value;
   busyLabel.textContent = label ?? "Thinking…";
   input.disabled = value;
   sendBtn.disabled = value;
+  addContextBtn.disabled = value;
+  modelBtn.disabled = value;
   if (value) {
+    hideModelMenu();
     busyBar.scrollIntoView({ block: "end" });
   }
 }
+
+// --- Context chips (the + button). ---
+
+let chips: Chip[] = [];
+
+function renderChips(): void {
+  chipsRow.replaceChildren();
+  chipsRow.hidden = chips.length === 0;
+  for (const chip of chips) {
+    const pill = el("span", "decoded-chip");
+    pill.title = chip.detail;
+    pill.appendChild(el("span", "decoded-chip-label", chip.label));
+    const remove = el("button", "decoded-chip-remove", "×");
+    remove.type = "button";
+    remove.title = "Remove";
+    remove.addEventListener("click", () => {
+      chips = chips.filter((c) => c.id !== chip.id);
+      renderChips();
+      vscode.postMessage({ type: "removeContext", id: chip.id });
+    });
+    pill.appendChild(remove);
+    chipsRow.appendChild(pill);
+  }
+}
+
+addContextBtn.addEventListener("click", () =>
+  vscode.postMessage({ type: "pickContext" })
+);
 
 function send(): void {
   const text = input.value.trim();
   if (!text || input.disabled) {
     return;
   }
-  vscode.postMessage({ type: "followUp", text });
+  vscode.postMessage({
+    type: "followUp",
+    text,
+    contextIds: chips.map((c) => c.id),
+  });
   input.value = "";
+  chips = [];
+  renderChips();
 }
 
 sendBtn.addEventListener("click", send);
@@ -407,11 +498,88 @@ input.addEventListener("keydown", (e) => {
   }
 });
 
-// --- Provider label. ---
+// --- Model picker (the dropdown in the input box, like Copilot). ---
 
-function setConfig(config: { provider: string; model: string }): void {
+let providers: ProviderInfo[] = [];
+let activeProviderId = "";
+let activeModel = "";
+let activeProviderLabel = "";
+
+// "qwen/qwen3-coder:free" → "qwen3-coder (free)" so it fits the button.
+function shortModelName(model: string): string {
+  const base = model.split("/").pop() ?? model;
+  return base.endsWith(":free")
+    ? `${base.slice(0, -":free".length)} (free)`
+    : base;
+}
+
+function buildModelMenu(): void {
+  modelMenu.replaceChildren();
+  for (const p of providers) {
+    modelMenu.appendChild(el("div", "decoded-menu-group", p.label));
+    for (const m of p.models) {
+      const isActive = p.id === activeProviderId && m === activeModel;
+      const btn = el(
+        "button",
+        `decoded-menu-item${isActive ? " decoded-menu-active" : ""}`
+      );
+      btn.type = "button";
+      btn.appendChild(el("span", "decoded-menu-check", isActive ? "✓" : ""));
+      btn.appendChild(el("span", "decoded-menu-model", m));
+      btn.addEventListener("click", () => {
+        hideModelMenu();
+        vscode.postMessage({ type: "selectModel", providerId: p.id, model: m });
+      });
+      modelMenu.appendChild(btn);
+    }
+  }
+}
+
+function hideModelMenu(): void {
+  modelMenu.hidden = true;
+}
+
+modelBtn.addEventListener("click", (e) => {
+  e.stopPropagation();
+  if (modelMenu.hidden) {
+    buildModelMenu();
+    modelMenu.hidden = false;
+  } else {
+    hideModelMenu();
+  }
+});
+
+// Close the menu on outside click or Escape.
+document.addEventListener("click", (e) => {
+  if (!modelMenu.hidden && !modelMenu.contains(e.target as Node)) {
+    hideModelMenu();
+  }
+});
+document.addEventListener("keydown", (e) => {
+  if (e.key === "Escape") {
+    hideModelMenu();
+  }
+});
+
+function setConfig(config: {
+  providerId?: string;
+  provider: string;
+  model: string;
+  providers?: ProviderInfo[];
+}): void {
+  activeProviderId = config.providerId ?? "";
+  activeProviderLabel = config.provider;
+  activeModel = config.model;
+  if (config.providers) {
+    providers = config.providers;
+  }
   byId<HTMLElement>("provider-label").textContent =
     `${config.provider} · ${config.model}`;
+  modelBtnLabel.textContent = shortModelName(config.model);
+  // If the menu is open (e.g. /model changed settings), refresh the ✓ mark.
+  if (!modelMenu.hidden) {
+    buildModelMenu();
+  }
 }
 
 // --- Message routing. ---
@@ -420,7 +588,14 @@ window.addEventListener("message", (event) => {
   const msg = event.data as Record<string, unknown>;
   switch (msg.type) {
     case "init": {
-      setConfig(msg.config as { provider: string; model: string });
+      setConfig(
+        msg.config as {
+          providerId?: string;
+          provider: string;
+          model: string;
+          providers?: ProviderInfo[];
+        }
+      );
       renderHistory(msg.history as HistorySummary[]);
       renderErrors(msg.errors as ErrorItem[]);
       transcript.replaceChildren();
@@ -448,7 +623,18 @@ window.addEventListener("message", (event) => {
       setBusy(Boolean(msg.value), msg.label as string | undefined);
       break;
     case "config":
-      setConfig(msg as unknown as { provider: string; model: string });
+      setConfig(
+        msg as unknown as {
+          providerId?: string;
+          provider: string;
+          model: string;
+          providers?: ProviderInfo[];
+        }
+      );
+      break;
+    case "contextChip":
+      chips.push(msg.chip as Chip);
+      renderChips();
       break;
     case "reset":
       transcript.replaceChildren();

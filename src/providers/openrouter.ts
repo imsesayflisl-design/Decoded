@@ -36,6 +36,8 @@ export const openrouterProvider: LLMProvider = {
     "openrouter/auto",
     "meta-llama/llama-3.3-70b-instruct:free",
     "deepseek/deepseek-chat-v3-0324:free",
+    "qwen/qwen3-coder:free",
+    "qwen/qwen-2.5-72b-instruct",
   ],
   defaultModel: "openrouter/auto",
   keyPlaceholder: "sk-or-v1-...",

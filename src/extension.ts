@@ -21,6 +21,17 @@ import { fixAllErrors } from "./autofix";
 const SCAN_INTENT =
   /\b(scan|find (the )?errors?|look for (any )?errors?|check (my |the )?(code|project|workspace|codebase)|read (my |the )?(code|project|workspace|codebase))\b/i;
 
+// A context item attached with the + button. Only the reference is stored;
+// the content is read fresh at send time so edits are always included.
+type ContextRef =
+  | { type: "file"; uri: vscode.Uri }
+  | { type: "selection"; uri: vscode.Uri; range: vscode.Range }
+  | { type: "diagnostic"; diagKey: string };
+
+// Caps so a huge file can't blow up the prompt.
+const MAX_CONTEXT_ITEM_CHARS = 12000;
+const MAX_CONTEXT_TOTAL_CHARS = 24000;
+
 // "Decoded: Choose AI Model" — pick a provider, then a model for it.
 async function selectProviderCommand(): Promise<void> {
   const active = getActiveProvider();
@@ -72,6 +83,140 @@ export function activate(context: vscode.ExtensionContext) {
 
   // Auto-detected problems feed the sidebar list; the AI runs only on click.
   watcher.onDidChangeErrors((items) => chatView.setErrors(items));
+
+  // --- Context attachments (the + button in the composer). ---
+
+  const pendingContext = new Map<string, ContextRef>();
+  let contextCounter = 0;
+
+  // The + button: pick the active file, the selection, or a listed error.
+  chatView.onPickContext(async () => {
+    type PickItem = vscode.QuickPickItem & {
+      ref?: ContextRef;
+      chipType?: "file" | "selection" | "diagnostic";
+      chipLabel?: string;
+      chipDetail?: string;
+    };
+    const items: PickItem[] = [];
+    const editor = vscode.window.activeTextEditor;
+    if (editor) {
+      const rel = vscode.workspace.asRelativePath(editor.document.uri);
+      const base = rel.split(/[\\/]/).pop() ?? rel;
+      items.push({
+        label: `$(file) Active file — ${base}`,
+        description: rel,
+        ref: { type: "file", uri: editor.document.uri },
+        chipType: "file",
+        chipLabel: base,
+        chipDetail: rel,
+      });
+      if (!editor.selection.isEmpty) {
+        const from = editor.selection.start.line + 1;
+        const to = editor.selection.end.line + 1;
+        items.push({
+          label: `$(selection) Selection — ${base}:${from}-${to}`,
+          description: rel,
+          ref: {
+            type: "selection",
+            uri: editor.document.uri,
+            range: new vscode.Range(editor.selection.start, editor.selection.end),
+          },
+          chipType: "selection",
+          chipLabel: `${base}:${from}-${to}`,
+          chipDetail: `Selected lines ${from}-${to} of ${rel}`,
+        });
+      }
+    }
+    for (const err of watcher.current().slice(0, 10)) {
+      items.push({
+        label: `$(error) ${err.message}`,
+        description: `${err.file}:${err.line}`,
+        ref: { type: "diagnostic", diagKey: err.key },
+        chipType: "diagnostic",
+        chipLabel: `${err.file}:${err.line}`,
+        chipDetail: err.message,
+      });
+    }
+    if (items.length === 0) {
+      vscode.window.showInformationMessage(
+        "Decoded: Open a file first — then you can attach it as context."
+      );
+      return;
+    }
+    const picked = await vscode.window.showQuickPick(items, {
+      placeHolder: "Attach context to your next message",
+    });
+    if (!picked?.ref) {
+      return;
+    }
+    const id = `ctx-${Date.now()}-${contextCounter++}`;
+    pendingContext.set(id, picked.ref);
+    chatView.addContextChip({
+      id,
+      type: picked.chipType!,
+      label: picked.chipLabel!,
+      detail: picked.chipDetail!,
+    });
+  });
+
+  chatView.onRemoveContext((id) => {
+    pendingContext.delete(id);
+  });
+
+  // Turns attached chips into CONTEXT blocks for the model, reading the
+  // files at send time so the content is always current.
+  const resolveContextBlocks = async (ids: string[]): Promise<string> => {
+    const blocks: string[] = [];
+    let total = 0;
+    for (const id of ids) {
+      const ref = pendingContext.get(id);
+      if (!ref) {
+        continue;
+      }
+      let label = "";
+      let content = "";
+      try {
+        if (ref.type === "file") {
+          const doc = await vscode.workspace.openTextDocument(ref.uri);
+          label = vscode.workspace.asRelativePath(ref.uri);
+          content = doc.getText();
+        } else if (ref.type === "selection") {
+          const doc = await vscode.workspace.openTextDocument(ref.uri);
+          const range = doc.validateRange(ref.range);
+          label = `${vscode.workspace.asRelativePath(ref.uri)}:${range.start.line + 1}-${range.end.line + 1}`;
+          content = doc.getText(range);
+        } else {
+          const resolved = watcher.resolve(ref.diagKey);
+          if (!resolved) {
+            continue; // the error was fixed since it was attached
+          }
+          const doc = await vscode.workspace.openTextDocument(resolved.uri);
+          const line = resolved.diagnostic.range.start.line;
+          const from = Math.max(0, line - 10);
+          const to = Math.min(doc.lineCount - 1, line + 10);
+          const snippet = doc.getText(
+            new vscode.Range(from, 0, to, doc.lineAt(to).text.length)
+          );
+          label = `${vscode.workspace.asRelativePath(resolved.uri)}:${line + 1}`;
+          content = `Error: ${resolved.diagnostic.message}\n\n${snippet}`;
+        }
+      } catch {
+        continue; // file deleted or unreadable — skip this chip
+      }
+      if (!content.trim()) {
+        continue;
+      }
+      if (content.length > MAX_CONTEXT_ITEM_CHARS) {
+        content = content.slice(0, MAX_CONTEXT_ITEM_CHARS) + "\n…[truncated]";
+      }
+      if (total + content.length > MAX_CONTEXT_TOTAL_CHARS) {
+        break;
+      }
+      total += content.length;
+      blocks.push(`CONTEXT — ${label}:\n\`\`\`\n${content}\n\`\`\``);
+    }
+    return blocks.join("\n\n");
+  };
 
   // Reads the workspace (no AI calls), reports what it found, and asks for
   // permission before fixing anything.
@@ -165,7 +310,7 @@ export function activate(context: vscode.ExtensionContext) {
   });
 
   // Follow-up questions typed into the chat input.
-  chatView.onFollowUp(async (text) => {
+  chatView.onFollowUp(async ({ text, contextIds }) => {
     // "/model" opens the provider + model picker right from the chat.
     if (/^\/(model|provider|ai)\b/i.test(text.trim())) {
       chatView.addUserMessage(text);
@@ -173,7 +318,7 @@ export function activate(context: vscode.ExtensionContext) {
       chatView.postConfig();
       const { provider, model } = getActiveProvider();
       chatView.addAssistantMarkdown(
-        `You're using **${provider.label} · ${model}**. Type \`/model\` any time to switch.`
+        `You're using **${provider.label} · ${model}**. Type \`/model\` or use the picker in the input box any time to switch.`
       );
       return;
     }
@@ -191,6 +336,15 @@ export function activate(context: vscode.ExtensionContext) {
       );
       return;
     }
+    // Attach any context chips as fresh CONTEXT blocks; the transcript shows
+    // only the question so it stays readable.
+    const contextBlocks = await resolveContextBlocks(contextIds);
+    const modelText = contextBlocks
+      ? `${contextBlocks}\n\nQUESTION:\n${text}`
+      : text;
+    for (const id of contextIds) {
+      pendingContext.delete(id);
+    }
     chatView.addUserMessage(text);
     chatView.setBusy(true, "Decoded is thinking…");
     try {
@@ -198,7 +352,7 @@ export function activate(context: vscode.ExtensionContext) {
         provider,
         { apiKey, model },
         conversation.buildHistory(),
-        text
+        modelText
       );
       conversation.addExchange(text, answer);
       chatView.addAssistantMarkdown(answer);
@@ -225,6 +379,7 @@ export function activate(context: vscode.ExtensionContext) {
   const startNewChat = () => {
     conversation.reset();
     chatView.clearTranscript();
+    pendingContext.clear();
   };
   chatView.onNewChat(startNewChat);
   const newChat = vscode.commands.registerCommand(

@@ -2,7 +2,7 @@
   "name": "decoded",
   "displayName": "Decoded",
   "description": "Explains your coding errors to teach you, right where you code.",
-  "version": "0.0.2",
+  "version": "0.0.3",
   "publisher": "idriss-sesay",
   "author": {
     "name": "Idriss M. Sesay"
@@ -67,7 +67,7 @@
         },
         "decoded.openrouter.model": {
           "type": "string",
-          "enum": ["openrouter/auto", "meta-llama/llama-3.3-70b-instruct:free", "deepseek/deepseek-chat-v3-0324:free"],
+          "enum": ["openrouter/auto", "meta-llama/llama-3.3-70b-instruct:free", "deepseek/deepseek-chat-v3-0324:free", "qwen/qwen3-coder:free", "qwen/qwen-2.5-72b-instruct"],
           "default": "openrouter/auto",
           "description": "Model used when the provider is OpenRouter."
         },
