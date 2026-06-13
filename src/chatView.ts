@@ -412,7 +412,7 @@ export class DecodedChatViewProvider
   </section>
   <main id="transcript" class="decoded-transcript"></main>
   <div id="busy" class="decoded-busy" hidden>
-    <span class="decoded-spinner"></span><span id="busy-label">Thinking…</span>
+    <span class="decoded-busy-icon">✦</span><span id="busy-label">Thinking…</span>
   </div>
   <footer class="decoded-composer">
     <div id="context-chips" class="decoded-chips" hidden></div>

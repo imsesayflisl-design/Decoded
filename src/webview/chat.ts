@@ -446,6 +446,11 @@ function setBusy(value: boolean, label?: string): void {
   if (value) {
     hideModelMenu();
     busyBar.scrollIntoView({ block: "end" });
+  } else {
+    // Answer finished — stop the pulsing logo on any streaming message.
+    transcript
+      .querySelectorAll(".decoded-streaming")
+      .forEach((row) => row.classList.remove("decoded-streaming"));
   }
 }
 
@@ -622,6 +627,10 @@ window.addEventListener("message", (event) => {
       );
       const body = row?.querySelector(".decoded-msg-assistant");
       if (body) {
+        // The ✦ in this message's header pulses while text is arriving
+        // (cleared when the busy state ends).
+        row!.classList.add("decoded-streaming");
+        busyBar.hidden = true; // the pulsing logo replaces the busy bar
         body.replaceChildren(renderMarkdown(msg.markdown as string));
         (row as HTMLElement).scrollIntoView({ block: "end" });
       }
