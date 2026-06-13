@@ -175,6 +175,20 @@ export class DecodedChatViewProvider
     return id;
   }
 
+  // Streaming: opens an (empty) assistant message that updateAssistantStream
+  // grows as text arrives from the model.
+  beginAssistantStream(): string {
+    return this.addAssistantMarkdown("");
+  }
+
+  updateAssistantStream(id: string, markdown: string): void {
+    const item = this.transcript.find((t) => t.id === id);
+    if (item && item.kind === "assistant") {
+      item.markdown = markdown;
+    }
+    this.post({ type: "updateAssistant", id, markdown });
+  }
+
   addErrorMessage(message: string): string {
     const id = nextId();
     this.push({ kind: "error", id, message });

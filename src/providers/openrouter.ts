@@ -44,7 +44,8 @@ export const openrouterProvider: LLMProvider = {
 
   async complete(
     req: CompletionRequest,
-    opts: ProviderOptions
+    opts: ProviderOptions,
+    onDelta?: (delta: string) => void
   ): Promise<string> {
     const client = new OpenAI({
       apiKey: opts.apiKey,
@@ -58,17 +59,36 @@ export const openrouterProvider: LLMProvider = {
         "X-Title": "Decoded",
       },
     });
+    const messages = [
+      { role: "system" as const, content: req.system },
+      ...req.messages.map((m) => ({
+        role: m.role,
+        content: m.content,
+      })),
+    ];
     try {
+      // Plain-text answers stream so the reply starts appearing right away.
+      if (onDelta && !req.jsonSchema) {
+        const stream = await client.chat.completions.create({
+          model: opts.model,
+          max_completion_tokens: req.maxTokens,
+          messages,
+          stream: true,
+        });
+        let full = "";
+        for await (const chunk of stream) {
+          const delta = chunk.choices[0]?.delta?.content ?? "";
+          if (delta) {
+            full += delta;
+            onDelta(delta);
+          }
+        }
+        return full;
+      }
       const completion = await client.chat.completions.create({
         model: opts.model,
         max_completion_tokens: req.maxTokens,
-        messages: [
-          { role: "system", content: req.system },
-          ...req.messages.map((m) => ({
-            role: m.role,
-            content: m.content,
-          })),
-        ],
+        messages,
         // Strict structured output guarantees parseable JSON when requested.
         // Not every OpenRouter model supports it; failures surface as a clear
         // ProviderError so the user can pick another model via /model.

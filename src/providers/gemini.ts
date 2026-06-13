@@ -43,7 +43,8 @@ export const geminiProvider: LLMProvider = {
 
   async complete(
     req: CompletionRequest,
-    opts: ProviderOptions
+    opts: ProviderOptions,
+    onDelta?: (delta: string) => void
   ): Promise<string> {
     const genai = await loadGenAI();
     // 2-minute timeout, matching the other providers.
@@ -51,26 +52,40 @@ export const geminiProvider: LLMProvider = {
       apiKey: opts.apiKey,
       httpOptions: { timeout: 120000 },
     });
+    const request = {
+      model: opts.model,
+      // Gemini calls the assistant role "model".
+      contents: req.messages.map((m) => ({
+        role: m.role === "assistant" ? "model" : "user",
+        parts: [{ text: m.content }],
+      })),
+      config: {
+        systemInstruction: req.system,
+        maxOutputTokens: req.maxTokens,
+        // Native JSON mode guarantees parseable JSON when requested.
+        ...(req.jsonSchema
+          ? {
+              responseMimeType: "application/json",
+              responseSchema: req.jsonSchema,
+            }
+          : {}),
+      },
+    };
     try {
-      const response = await ai.models.generateContent({
-        model: opts.model,
-        // Gemini calls the assistant role "model".
-        contents: req.messages.map((m) => ({
-          role: m.role === "assistant" ? "model" : "user",
-          parts: [{ text: m.content }],
-        })),
-        config: {
-          systemInstruction: req.system,
-          maxOutputTokens: req.maxTokens,
-          // Native JSON mode guarantees parseable JSON when requested.
-          ...(req.jsonSchema
-            ? {
-                responseMimeType: "application/json",
-                responseSchema: req.jsonSchema,
-              }
-            : {}),
-        },
-      });
+      // Plain-text answers stream so the reply starts appearing right away.
+      if (onDelta && !req.jsonSchema) {
+        const stream = await ai.models.generateContentStream(request);
+        let full = "";
+        for await (const chunk of stream) {
+          const delta = chunk.text ?? "";
+          if (delta) {
+            full += delta;
+            onDelta(delta);
+          }
+        }
+        return full;
+      }
+      const response = await ai.models.generateContent(request);
       return response.text ?? "";
     } catch (err) {
       toProviderError(genai, err);

@@ -311,6 +311,8 @@ function renderItem(item: TranscriptItem): void {
       const body = el("div", "decoded-msg decoded-msg-assistant");
       body.appendChild(renderMarkdown(item.markdown));
       node = assistantRow(body);
+      // Tagged so streaming updates can find and re-render this message.
+      node.dataset.itemId = item.id;
       break;
     }
     case "error":
@@ -613,6 +615,18 @@ window.addEventListener("message", (event) => {
     case "append":
       renderItem(msg.item as TranscriptItem);
       break;
+    case "updateAssistant": {
+      // A streaming message grew — re-render its markdown in place.
+      const row = transcript.querySelector(
+        `[data-item-id="${msg.id as string}"]`
+      );
+      const body = row?.querySelector(".decoded-msg-assistant");
+      if (body) {
+        body.replaceChildren(renderMarkdown(msg.markdown as string));
+        (row as HTMLElement).scrollIntoView({ block: "end" });
+      }
+      break;
+    }
     case "errors":
       renderErrors(msg.items as ErrorItem[]);
       break;

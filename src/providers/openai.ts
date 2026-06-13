@@ -33,7 +33,8 @@ export const openaiProvider: LLMProvider = {
 
   async complete(
     req: CompletionRequest,
-    opts: ProviderOptions
+    opts: ProviderOptions,
+    onDelta?: (delta: string) => void
   ): Promise<string> {
     // 2-minute timeout — reasoning models can think well past 30s.
     const client = new OpenAI({
@@ -41,17 +42,36 @@ export const openaiProvider: LLMProvider = {
       timeout: 120000,
       maxRetries: 2,
     });
+    const messages = [
+      { role: "system" as const, content: req.system },
+      ...req.messages.map((m) => ({
+        role: m.role,
+        content: m.content,
+      })),
+    ];
     try {
+      // Plain-text answers stream so the reply starts appearing right away.
+      if (onDelta && !req.jsonSchema) {
+        const stream = await client.chat.completions.create({
+          model: opts.model,
+          max_completion_tokens: req.maxTokens,
+          messages,
+          stream: true,
+        });
+        let full = "";
+        for await (const chunk of stream) {
+          const delta = chunk.choices[0]?.delta?.content ?? "";
+          if (delta) {
+            full += delta;
+            onDelta(delta);
+          }
+        }
+        return full;
+      }
       const completion = await client.chat.completions.create({
         model: opts.model,
         max_completion_tokens: req.maxTokens,
-        messages: [
-          { role: "system", content: req.system },
-          ...req.messages.map((m) => ({
-            role: m.role,
-            content: m.content,
-          })),
-        ],
+        messages,
         // Strict structured output guarantees parseable JSON when requested.
         ...(req.jsonSchema
           ? {

@@ -176,14 +176,15 @@ export async function chat(
   provider: LLMProvider,
   opts: ProviderOptions,
   history: ChatTurn[],
-  followUp: string
+  followUp: string,
+  onDelta?: (delta: string) => void
 ): Promise<string> {
   const req: CompletionRequest = {
     system: FOLLOW_UP_SYSTEM_PROMPT,
     messages: [...history, { role: "user", content: followUp }],
     maxTokens: CHAT_MAX_TOKENS,
   };
-  const text = await provider.complete(req, opts);
+  const text = await provider.complete(req, opts, onDelta);
   const trimmed = text.trim();
   if (!trimmed) {
     throw new Error("The model returned an empty reply. Please try again.");

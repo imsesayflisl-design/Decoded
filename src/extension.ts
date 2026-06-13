@@ -348,14 +348,33 @@ export function activate(context: vscode.ExtensionContext) {
     chatView.addUserMessage(text);
     chatView.setBusy(true, "Decoded is thinking…");
     try {
+      // Stream the reply into the transcript as it's generated, updating at
+      // most every 100ms so the webview isn't flooded.
+      let streamId: string | undefined;
+      let streamed = "";
+      let lastUpdate = 0;
       const answer = await chat(
         provider,
         { apiKey, model },
         conversation.buildHistory(),
-        modelText
+        modelText,
+        (delta) => {
+          streamed += delta;
+          streamId ??= chatView.beginAssistantStream();
+          const now = Date.now();
+          if (now - lastUpdate >= 100) {
+            lastUpdate = now;
+            chatView.updateAssistantStream(streamId, streamed);
+          }
+        }
       );
       conversation.addExchange(text, answer);
-      chatView.addAssistantMarkdown(answer);
+      if (streamId) {
+        chatView.updateAssistantStream(streamId, answer);
+      } else {
+        // Provider didn't stream (or produced everything at once).
+        chatView.addAssistantMarkdown(answer);
+      }
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       chatView.addErrorMessage(message);

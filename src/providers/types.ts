@@ -36,7 +36,14 @@ export interface LLMProvider {
   readonly defaultModel: string;
   // Shown in the API-key input box, e.g. "sk-ant-...".
   readonly keyPlaceholder: string;
-  complete(req: CompletionRequest, opts: ProviderOptions): Promise<string>;
+  // When onDelta is given and the request has no jsonSchema, providers
+  // stream partial text as it's generated (the full text is still returned).
+  // Structured (jsonSchema) requests never stream — partial JSON is useless.
+  complete(
+    req: CompletionRequest,
+    opts: ProviderOptions,
+    onDelta?: (delta: string) => void
+  ): Promise<string>;
 }
 
 // Thrown by providers for auth/rate-limit/transport failures, with a message

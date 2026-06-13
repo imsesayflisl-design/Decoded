@@ -46,7 +46,8 @@ export const anthropicProvider: LLMProvider = {
 
   async complete(
     req: CompletionRequest,
-    opts: ProviderOptions
+    opts: ProviderOptions,
+    onDelta?: (delta: string) => void
   ): Promise<string> {
     // 2-minute timeout so slow (thinking) responses still finish cleanly.
     // No sampling params and no `thinking` — both 400 on the newest models.
@@ -55,15 +56,28 @@ export const anthropicProvider: LLMProvider = {
       timeout: 120000,
       maxRetries: 2,
     });
+    const messages = req.messages.map((m) => ({
+      role: m.role,
+      content: m.content,
+    }));
     try {
+      // Plain-text answers stream so the reply starts appearing right away.
+      if (onDelta && !req.jsonSchema) {
+        const stream = client.messages.stream({
+          model: opts.model,
+          max_tokens: req.maxTokens,
+          system: req.system,
+          messages,
+        });
+        stream.on("text", (delta) => onDelta(delta));
+        const message = await stream.finalMessage();
+        return responseText(message);
+      }
       const message = await client.messages.create({
         model: opts.model,
         max_tokens: req.maxTokens,
         system: req.system,
-        messages: req.messages.map((m) => ({
-          role: m.role,
-          content: m.content,
-        })),
+        messages,
         // Native structured output guarantees parseable JSON when requested.
         ...(req.jsonSchema
           ? {
