@@ -46,7 +46,11 @@ export const geminiProvider: LLMProvider = {
     opts: ProviderOptions
   ): Promise<string> {
     const genai = await loadGenAI();
-    const ai = new genai.GoogleGenAI({ apiKey: opts.apiKey });
+    // 2-minute timeout, matching the other providers.
+    const ai = new genai.GoogleGenAI({
+      apiKey: opts.apiKey,
+      httpOptions: { timeout: 120000 },
+    });
     try {
       const response = await ai.models.generateContent({
         model: opts.model,

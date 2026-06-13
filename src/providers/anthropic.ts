@@ -48,12 +48,12 @@ export const anthropicProvider: LLMProvider = {
     req: CompletionRequest,
     opts: ProviderOptions
   ): Promise<string> {
-    // 30s timeout so a hung request fails cleanly; one transport retry.
+    // 2-minute timeout so slow (thinking) responses still finish cleanly.
     // No sampling params and no `thinking` — both 400 on the newest models.
     const client = new Anthropic({
       apiKey: opts.apiKey,
-      timeout: 30000,
-      maxRetries: 1,
+      timeout: 120000,
+      maxRetries: 2,
     });
     try {
       const message = await client.messages.create({

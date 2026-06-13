@@ -49,8 +49,9 @@ export const openrouterProvider: LLMProvider = {
     const client = new OpenAI({
       apiKey: opts.apiKey,
       baseURL: OPENROUTER_BASE_URL,
-      timeout: 30000,
-      maxRetries: 1,
+      // 2-minute timeout — free-tier models can queue and think for a while.
+      timeout: 120000,
+      maxRetries: 2,
       // Optional OpenRouter app attribution headers.
       defaultHeaders: {
         "HTTP-Referer": "https://github.com/imsesayflisl-design/Decoded",

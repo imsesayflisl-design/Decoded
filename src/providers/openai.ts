@@ -35,10 +35,11 @@ export const openaiProvider: LLMProvider = {
     req: CompletionRequest,
     opts: ProviderOptions
   ): Promise<string> {
+    // 2-minute timeout — reasoning models can think well past 30s.
     const client = new OpenAI({
       apiKey: opts.apiKey,
-      timeout: 30000,
-      maxRetries: 1,
+      timeout: 120000,
+      maxRetries: 2,
     });
     try {
       const completion = await client.chat.completions.create({

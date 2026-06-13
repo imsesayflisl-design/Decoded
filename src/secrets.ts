@@ -28,17 +28,22 @@ export async function migrateLegacyApiKey(
   await context.secrets.delete(LEGACY_ANTHROPIC_KEY);
 }
 
-// Returns the key for a provider: SecretStorage first, then a .env.local
-// fallback (so keys in that file are picked up without any prompt).
+// Returns the key for a provider. A key found in .env.local wins and is
+// copied into SecretStorage, so after the file has been seen once the key
+// works in every project — even where .env.local isn't reachable.
 export async function getApiKey(
   context: vscode.ExtensionContext,
   provider: ProviderId
 ): Promise<string | undefined> {
+  const envKey = getEnvFileApiKey(context, provider);
   const stored = await context.secrets.get(secretKeyFor(provider));
-  if (stored) {
-    return stored;
+  if (envKey) {
+    if (envKey !== stored) {
+      await context.secrets.store(secretKeyFor(provider), envKey);
+    }
+    return envKey;
   }
-  return getEnvFileApiKey(context, provider);
+  return stored ?? undefined;
 }
 
 export async function storeApiKey(
