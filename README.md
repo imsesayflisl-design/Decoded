@@ -6,8 +6,8 @@ An extension for VS Code and compatible editors that explains your errors to tea
 
 1. Download the latest `decoded-x.x.x.vsix` from the [Releases page](https://github.com/imsesayflisl-design/Decoded/releases).
 2. In your editor, open the **Extensions** panel → click the `…` menu (top right) → **Install from VSIX…** → pick the downloaded file.
-   - Or from a terminal: `code --install-extension decoded-0.0.1.vsix` (use `cursor`/`antigravity`/your editor's CLI instead of `code`).
-3. Click the **Decoded** icon in the activity bar, and set an API key when asked (or run **Decoded: Set API Key**). Works with Anthropic, OpenAI, or Google Gemini — bring your own key.
+   - Or from a terminal: `code --install-extension decoded-0.0.7.vsix` (use `cursor`/`antigravity`/your editor's CLI instead of `code`).
+3. Click the **Decoded** icon in the activity bar, and set an API key when asked (or run **Decoded: Set API Key**). Works with OpenAI, Anthropic, Google Gemini, or OpenRouter (which includes free Qwen, Llama, and DeepSeek models) — bring your own key.
 
 > Each editor stores its own keys, so enter your key once per editor.
 
@@ -19,7 +19,9 @@ Decoded watches your code for problems and lists them in its sidebar as they app
 - **Automatic error detection** — Decoded watches diagnostics across your workspace and lists them live. The AI is only called when you click a problem (or trigger Explain Error), so idle watching costs nothing.
 - **Workspace scan + fix-it-for-me** — when you open the sidebar, Decoded reads your codebase (opens source files so language servers report problems), tells you what it found, and **asks before fixing anything**. Say yes and it fixes errors one by one (capped at 10 per run, unsaved so Undo works). Trigger a scan anytime with the **Scan** button, by typing "scan my code" in the chat, or via **Decoded: Scan Workspace for Errors**.
 - **Four-part teaching answer** — what it means → why → how to fix (Before/After, with an Apply fix button) → how to avoid next time, with syntax highlighting.
-- **Your choice of AI** — OpenAI (GPT, default), Anthropic (Claude), or Google (Gemini), each with selectable models. Switch any time with **Decoded: Choose AI Model** or by typing `/model` in the chat — your provider and model are remembered until you change them.
+- **Streaming answers** — replies stream into the chat as they're generated, so you start reading right away instead of waiting for the whole answer.
+- **Animated logo** — the Decoded logo gently "breathes" while the AI is thinking, so you always know it's working.
+- **Your choice of AI** — OpenAI (GPT, default), Anthropic (Claude), Google (Gemini), or OpenRouter (free Qwen, Llama, and DeepSeek models), each with selectable models. Switch any time with **Decoded: Choose AI Model** or by typing `/model` in the chat — your provider and model are remembered until you change them.
 - **Native triggers** — lightbulb quick-fix on diagnostics, right-click menu, and a configurable keybinding (`Ctrl+Alt+D` / `Cmd+Alt+D`).
 - **Secure keys** — API keys are stored per provider in your editor's secret storage (SecretStorage — never in settings, code, or logs). Keys for all providers are kept, so switching providers never makes you re-enter a key.
 - **History** — past explanations are saved locally and reopen from the History drawer in the sidebar.
@@ -28,10 +30,11 @@ Decoded watches your code for problems and lists them in its sidebar as they app
 
 | Setting | Description |
 | --- | --- |
-| `decoded.provider` | `openai` (default), `anthropic`, or `gemini` |
+| `decoded.provider` | `openai` (default), `anthropic`, `gemini`, or `openrouter` |
 | `decoded.anthropic.model` | Claude model (default `claude-opus-4-8`) |
 | `decoded.openai.model` | GPT model (default `gpt-5.4-mini`) |
 | `decoded.gemini.model` | Gemini model (default `gemini-3.5-flash`) |
+| `decoded.openrouter.model` | OpenRouter model (default `openrouter/auto`; includes free Qwen/Llama/DeepSeek) |
 | `decoded.errors.includeWarnings` | Also list warnings in the sidebar (default off) |
 | `decoded.errors.maxListed` | Cap on listed problems (default 50) |
 
@@ -55,9 +58,10 @@ with the **esbuild** bundler option.
 │   │   ├── types.ts     # LLMProvider interface
 │   │   ├── explain.ts   # teaching prompt + JSON contract + Zod validation
 │   │   ├── anthropic.ts # Claude adapter
-│   │   ├── openai.ts    # GPT adapter
-│   │   ├── gemini.ts    # Gemini adapter
-│   │   └── index.ts     # registry + active provider
+│   │   ├── openai.ts     # GPT adapter
+│   │   ├── gemini.ts     # Gemini adapter
+│   │   ├── openrouter.ts # OpenRouter adapter (Qwen/Llama/DeepSeek)
+│   │   └── index.ts      # registry + active provider
 │   ├── webview/chat.ts  # webview script (highlight.js) → dist/webview.js
 │   └── test/            # @vscode/test-cli tests
 ├── media/               # icon.png, decoded.svg (activity bar), chat.css
@@ -85,8 +89,8 @@ then click the Decoded icon in the activity bar. Set a key once with
 ## Packaging & publishing
 
 ```bash
-npm run vsix                                 # → decoded-0.0.1.vsix
-code --install-extension decoded-0.0.1.vsix  # install locally
+npm run vsix                                 # → decoded-0.0.7.vsix
+code --install-extension decoded-0.0.7.vsix  # install locally
 ```
 
 Decoded is published to **both** registries so every compatible editor can install it:
