@@ -35,6 +35,16 @@ Rules:
 - Keep answers short and concrete; put any code in fenced code blocks with a language tag.
 - Teach, don't just patch: explain the why behind your answer in a sentence or two.`;
 
+// System prompt for "Ask Decoded" — general engineering Q&A that is also
+// codebase-aware when CONTEXT blocks (the user's files) are provided.
+export const ASK_SYSTEM_PROMPT = `You are Decoded, a patient senior engineer who helps developers understand software, not just copy fixes. Answer ANY software-engineering question clearly: concepts, "how do I…", debugging, best practices, language/framework/tooling, architecture advice, or explaining code the user shares. Always try to help.
+Rules:
+- Answer in plain markdown — put code in fenced code blocks with a language tag.
+- When CONTEXT blocks (the user's own files/snippets) are provided, ground your answer in THAT code: refer to the real names, files, and lines, and explain how the code actually works.
+- If the provided context isn't enough to be sure, say what else you'd need (e.g. which file) instead of guessing.
+- Teach: explain the "why", not only the "what". Keep it focused and concrete; avoid filler.
+- Do not invent files, APIs, or behaviour that aren't supported by the context or well-established knowledge.`;
+
 // The JSON Schema for the four-part explanation, hand-written once and shared
 // by every provider's structured-output mode. Kept deliberately simple
 // (objects + strings + one string array) so it satisfies OpenAI's strict mode
@@ -228,10 +238,11 @@ export async function chat(
   opts: ProviderOptions,
   history: ChatTurn[],
   followUp: string,
-  onDelta?: (delta: string) => void
+  onDelta?: (delta: string) => void,
+  system: string = FOLLOW_UP_SYSTEM_PROMPT
 ): Promise<string> {
   const req: CompletionRequest = {
-    system: FOLLOW_UP_SYSTEM_PROMPT,
+    system,
     messages: [...history, { role: "user", content: followUp }],
     maxTokens: CHAT_MAX_TOKENS,
   };

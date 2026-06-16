@@ -11,7 +11,8 @@ import { HistoryStore } from "./history";
 import { DecodedChatViewProvider } from "./chatView";
 import { ConversationManager } from "./conversation";
 import { DiagnosticsWatcher } from "./diagnostics";
-import { chat } from "./providers/explain";
+import { chat, ASK_SYSTEM_PROMPT } from "./providers/explain";
+import { gatherAskContext, type FileRef } from "./codebaseContext";
 import { PROVIDERS, getActiveProvider } from "./providers";
 import { setActiveProviderId, setConfiguredModel } from "./config";
 import { scanWorkspace } from "./scan";
@@ -139,25 +140,66 @@ export function activate(context: vscode.ExtensionContext) {
         chipDetail: err.message,
       });
     }
-    if (items.length === 0) {
-      vscode.window.showInformationMessage(
-        "Decoded: Open a file first — then you can attach it as context."
-      );
-      return;
-    }
+    // Always offer a workspace file/folder picker for codebase questions.
+    const BROWSE = "__browse__";
+    items.push({
+      label: "$(search) Add a workspace file…",
+      description: "Pick any file to attach as context",
+      chipType: "file",
+    });
+    items[items.length - 1].ref = undefined;
+    (items[items.length - 1] as PickItem & { browse?: string }).browse = BROWSE;
+
     const picked = await vscode.window.showQuickPick(items, {
       placeHolder: "Attach context to your next message",
     });
-    if (!picked?.ref) {
+    if (!picked) {
+      return;
+    }
+
+    let ref = picked.ref;
+    let chipType = picked.chipType;
+    let chipLabel = picked.chipLabel;
+    let chipDetail = picked.chipDetail;
+
+    // The browse option opens a workspace file Quick Pick.
+    if ((picked as PickItem & { browse?: string }).browse === BROWSE) {
+      const uris = await vscode.workspace.findFiles(
+        "**/*",
+        "**/{node_modules,.git,dist,out,build,.next,coverage}/**",
+        2000
+      );
+      const fileItems = uris
+        .map((u) => ({
+          label: `$(file) ${vscode.workspace.asRelativePath(u).split(/[\\/]/).pop()}`,
+          description: vscode.workspace.asRelativePath(u),
+          uri: u,
+        }))
+        .sort((a, b) => a.description.localeCompare(b.description));
+      const file = await vscode.window.showQuickPick(fileItems, {
+        placeHolder: "Pick a file to attach",
+        matchOnDescription: true,
+      });
+      if (!file) {
+        return;
+      }
+      const base = file.description.split(/[\\/]/).pop() ?? file.description;
+      ref = { type: "file", uri: file.uri };
+      chipType = "file";
+      chipLabel = base;
+      chipDetail = file.description;
+    }
+
+    if (!ref) {
       return;
     }
     const id = `ctx-${Date.now()}-${contextCounter++}`;
-    pendingContext.set(id, picked.ref);
+    pendingContext.set(id, ref);
     chatView.addContextChip({
       id,
-      type: picked.chipType!,
-      label: picked.chipLabel!,
-      detail: picked.chipDetail!,
+      type: chipType!,
+      label: chipLabel!,
+      detail: chipDetail!,
     });
   });
 
@@ -166,9 +208,15 @@ export function activate(context: vscode.ExtensionContext) {
   });
 
   // Turns attached chips into CONTEXT blocks for the model, reading the
-  // files at send time so the content is always current.
-  const resolveContextBlocks = async (ids: string[]): Promise<string> => {
+  // files at send time so the content is always current. Also reports which
+  // file URIs were used (so codebase retrieval can avoid re-reading them) and
+  // the files read (for the transparency footer).
+  const resolveContextBlocks = async (
+    ids: string[]
+  ): Promise<{ blocks: string; uris: Set<string>; filesRead: FileRef[] }> => {
     const blocks: string[] = [];
+    const uris = new Set<string>();
+    const filesRead: FileRef[] = [];
     let total = 0;
     for (const id of ids) {
       const ref = pendingContext.get(id);
@@ -216,8 +264,14 @@ export function activate(context: vscode.ExtensionContext) {
       }
       total += content.length;
       blocks.push(`CONTEXT — ${label}:\n\`\`\`\n${content}\n\`\`\``);
+      if (ref.type === "file") {
+        uris.add(ref.uri.toString());
+      } else if (ref.type === "selection") {
+        uris.add(ref.uri.toString());
+      }
+      filesRead.push({ label, uri: label });
     }
-    return blocks.join("\n\n");
+    return { blocks: blocks.join("\n\n"), uris, filesRead };
   };
 
   // Reads the workspace (no AI calls), reports what it found, and asks for
@@ -338,18 +392,25 @@ export function activate(context: vscode.ExtensionContext) {
       );
       return;
     }
-    // Attach any context chips as fresh CONTEXT blocks; the transcript shows
-    // only the question so it stays readable.
-    const contextBlocks = await resolveContextBlocks(contextIds);
-    const modelText = contextBlocks
-      ? `${contextBlocks}\n\nQUESTION:\n${text}`
-      : text;
-    for (const id of contextIds) {
-      pendingContext.delete(id);
-    }
     chatView.addUserMessage(text);
-    chatView.setBusy(true, "Decoded is thinking…");
+    chatView.setBusy(true, "Decoded is reading your code…");
     try {
+      // 1) Explicit context the user attached with the + button.
+      const attached = await resolveContextBlocks(contextIds);
+      for (const id of contextIds) {
+        pendingContext.delete(id);
+      }
+      // 2) Codebase awareness: active file/selection, @-mentions, and
+      // lightweight retrieval — skipping anything already attached above.
+      const auto = await gatherAskContext(text, attached.uris);
+
+      const allBlocks = [attached.blocks, auto.blocks]
+        .filter((b) => b)
+        .join("\n\n");
+      const modelText = allBlocks
+        ? `${allBlocks}\n\nQUESTION:\n${text}`
+        : text;
+
       // Stream the reply into the transcript as it's generated, updating at
       // most every 100ms so the webview isn't flooded.
       let streamId: string | undefined;
@@ -368,7 +429,8 @@ export function activate(context: vscode.ExtensionContext) {
             lastUpdate = now;
             chatView.updateAssistantStream(streamId, streamed);
           }
-        }
+        },
+        ASK_SYSTEM_PROMPT
       );
       conversation.addExchange(text, answer);
       if (streamId) {
@@ -376,6 +438,16 @@ export function activate(context: vscode.ExtensionContext) {
       } else {
         // Provider didn't stream (or produced everything at once).
         chatView.addAssistantMarkdown(answer);
+      }
+
+      // Be transparent about which files Decoded read to answer.
+      const read = [...attached.filesRead, ...auto.filesRead];
+      if (read.length > 0) {
+        const list = read.map((f) => `\`${f.label}\``).join(", ");
+        const note = auto.truncated
+          ? " _(some files were large, so I read the most relevant parts)_"
+          : "";
+        chatView.addAssistantMarkdown(`📎 Read to answer: ${list}${note}`);
       }
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
@@ -415,6 +487,11 @@ export function activate(context: vscode.ExtensionContext) {
     (target?: ExplainTarget) =>
       runExplainError(context, history, chatView, conversation, target)
   );
+
+  // "Ask Decoded": focus the chat view so the user can ask anything.
+  const ask = vscode.commands.registerCommand("decoded.ask", async () => {
+    await chatView.focus();
+  });
 
   // Whole-file review: every issue, what's missing, how to fix.
   const reviewFile = vscode.commands.registerCommand("decoded.reviewFile", () =>
@@ -480,6 +557,7 @@ export function activate(context: vscode.ExtensionContext) {
     setKey,
     clearKey,
     selectProvider,
+    ask,
     reviewFile,
     diagnose,
     newChat,

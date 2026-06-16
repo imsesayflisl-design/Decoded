@@ -196,8 +196,8 @@ const transcript = byId<HTMLElement>("transcript");
 // send a message when clicked.
 const SUGGESTIONS = [
   "Scan my code for errors",
-  "What can Decoded help me with?",
-  "How do I read error messages?",
+  "How does the code in this file work?",
+  "Where is this function defined?",
 ];
 
 function renderEmptyState(): void {
@@ -208,7 +208,7 @@ function renderEmptyState(): void {
     el(
       "p",
       undefined,
-      "I explain your errors and teach you while you code. Click a problem above, or start with one of these:"
+      "Ask me anything about software — or about your own code. I read the relevant files to answer, explain your errors, and teach as we go. Try one of these:"
     )
   );
   const suggestions = el("div", "decoded-suggestions");

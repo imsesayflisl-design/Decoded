@@ -2,7 +2,7 @@
   "name": "decoded",
   "displayName": "Decoded",
   "description": "Explains your coding errors to teach you, right where you code.",
-  "version": "0.0.8",
+  "version": "0.0.9",
   "publisher": "Decoded",
   "author": {
     "name": "Idriss M. Sesay"
@@ -115,6 +115,11 @@
         "command": "decoded.clearHistory",
         "title": "Decoded: Clear History",
         "icon": "$(trash)"
+      },
+      {
+        "command": "decoded.ask",
+        "title": "Decoded: Ask",
+        "icon": "$(comment-discussion)"
       },
       {
         "command": "decoded.reviewFile",
