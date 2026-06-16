@@ -16,6 +16,8 @@ import { PROVIDERS, getActiveProvider } from "./providers";
 import { setActiveProviderId, setConfiguredModel } from "./config";
 import { scanWorkspace } from "./scan";
 import { fixAllErrors } from "./autofix";
+import { runReviewFile } from "./review";
+import { runDiagnose } from "./diagnose";
 
 // Chat messages that mean "look for errors" rather than a question for the AI.
 const SCAN_INTENT =
@@ -414,6 +416,17 @@ export function activate(context: vscode.ExtensionContext) {
       runExplainError(context, history, chatView, conversation, target)
   );
 
+  // Whole-file review: every issue, what's missing, how to fix.
+  const reviewFile = vscode.commands.registerCommand("decoded.reviewFile", () =>
+    runReviewFile(context, chatView)
+  );
+
+  // Diagnose run/setup errors (e.g. missing node_modules) from the terminal.
+  const diagnose = vscode.commands.registerCommand(
+    "decoded.diagnoseError",
+    () => runDiagnose(context, chatView)
+  );
+
   // Key + provider management.
   const setKey = vscode.commands.registerCommand("decoded.setApiKey", () =>
     setApiKeyCommand(context)
@@ -467,6 +480,8 @@ export function activate(context: vscode.ExtensionContext) {
     setKey,
     clearKey,
     selectProvider,
+    reviewFile,
+    diagnose,
     newChat,
     scanCommand,
     configListener,

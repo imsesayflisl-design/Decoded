@@ -1,5 +1,5 @@
 import * as vscode from "vscode";
-import type { Explanation } from "./schema";
+import type { Explanation, ReviewIssue, Diagnosis } from "./schema";
 import { applyFix, type ExplainSource } from "./applyFix";
 import type { HistoryStore } from "./history";
 import type { ErrorItem } from "./diagnostics";
@@ -25,7 +25,17 @@ type TranscriptItem =
     }
   | { kind: "assistant"; id: string; markdown: string }
   | { kind: "error"; id: string; message: string }
-  | { kind: "prompt"; id: string; text: string; actions: PromptAction[] };
+  | { kind: "prompt"; id: string; text: string; actions: PromptAction[] }
+  | {
+      kind: "review";
+      id: string;
+      summary: string;
+      issues: ReviewIssue[];
+      // The reviewed file's URI string + languageId (for jump-to-line + highlighting).
+      file: string;
+      language: string;
+    }
+  | { kind: "diagnosis"; id: string; diagnosis: Diagnosis };
 
 interface HistorySummary {
   id: string;
@@ -55,6 +65,9 @@ interface WebviewMessage {
   providerId?: string;
   model?: string;
   contextIds?: unknown;
+  file?: string;
+  line?: number;
+  command?: string;
 }
 
 function nextId(): string {
@@ -192,6 +205,25 @@ export class DecodedChatViewProvider
   addErrorMessage(message: string): string {
     const id = nextId();
     this.push({ kind: "error", id, message });
+    return id;
+  }
+
+  // "Review File" result — a summary + list of issue cards.
+  addReview(
+    summary: string,
+    issues: ReviewIssue[],
+    file: string,
+    language: string
+  ): string {
+    const id = nextId();
+    this.push({ kind: "review", id, summary, issues, file, language });
+    return id;
+  }
+
+  // "Diagnose" result — a setup-error fix card with a copyable command.
+  addDiagnosis(diagnosis: Diagnosis): string {
+    const id = nextId();
+    this.push({ kind: "diagnosis", id, diagnosis });
     return id;
   }
 
@@ -363,7 +395,62 @@ export class DecodedChatViewProvider
           this.promptActionEmitter.fire(msg.action);
         }
         break;
+      case "openLocation":
+        if (typeof msg.file === "string" && typeof msg.line === "number") {
+          await this.openLocation(msg.file, msg.line);
+        }
+        break;
+      case "copyCommand":
+        if (typeof msg.command === "string" && msg.command.trim()) {
+          await vscode.env.clipboard.writeText(msg.command);
+          vscode.window.showInformationMessage(
+            "Decoded: Command copied to clipboard."
+          );
+        }
+        break;
+      case "runCommand":
+        if (typeof msg.command === "string" && msg.command.trim()) {
+          await this.runCommand(msg.command);
+        }
+        break;
     }
+  }
+
+  // Jumps to a line in a file (clicked from a Review issue card).
+  private async openLocation(file: string, line: number): Promise<void> {
+    try {
+      const document = await vscode.workspace.openTextDocument(
+        vscode.Uri.parse(file)
+      );
+      const editor = await vscode.window.showTextDocument(document);
+      const pos = new vscode.Position(Math.max(0, line - 1), 0);
+      editor.selection = new vscode.Selection(pos, pos);
+      editor.revealRange(
+        new vscode.Range(pos, pos),
+        vscode.TextEditorRevealType.InCenter
+      );
+    } catch {
+      vscode.window.showWarningMessage(
+        "Decoded: Couldn't open that location — the file may have changed."
+      );
+    }
+  }
+
+  // Runs a Diagnose fix command in the terminal, after confirmation.
+  private async runCommand(command: string): Promise<void> {
+    const choice = await vscode.window.showWarningMessage(
+      `Decoded: Run this command in the terminal?\n\n${command}`,
+      { modal: true },
+      "Run"
+    );
+    if (choice !== "Run") {
+      return;
+    }
+    const terminal =
+      vscode.window.activeTerminal ??
+      vscode.window.createTerminal("Decoded");
+    terminal.show();
+    terminal.sendText(command);
   }
 
   private getHtml(webview: vscode.Webview): string {

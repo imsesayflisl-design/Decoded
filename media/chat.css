@@ -765,3 +765,94 @@ pre code {
 .vscode-dark .hljs-variable,
 .vscode-dark .hljs-template-variable,
 .vscode-high-contrast .hljs-variable { color: #ffa657; }
+
+/* ---- Review File: summary + issue cards ---- */
+.decoded-review-summary {
+  margin: 8px 0 4px;
+  font-weight: 600;
+}
+
+.decoded-issue {
+  padding: 10px 0;
+  border-top: 1px solid var(--decoded-border);
+}
+
+.decoded-issue-head {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 4px;
+}
+
+.decoded-issue-title {
+  font-weight: 600;
+}
+
+/* Colour-coded type badge */
+.decoded-badge {
+  flex: 0 0 auto;
+  font-size: 0.72em;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  padding: 2px 7px;
+  border-radius: 10px;
+  color: var(--vscode-badge-foreground);
+  background-color: var(--vscode-badge-background);
+}
+
+.decoded-badge-error {
+  color: #fff;
+  background-color: var(--vscode-editorError-foreground, var(--vscode-errorForeground));
+}
+
+.decoded-badge-warning {
+  color: #000;
+  background-color: var(--vscode-editorWarning-foreground, var(--vscode-charts-yellow));
+}
+
+.decoded-badge-missing {
+  color: #fff;
+  background-color: var(--vscode-charts-purple, var(--vscode-textLink-foreground));
+}
+
+.decoded-badge-suggestion {
+  color: var(--vscode-badge-foreground);
+  background-color: var(--vscode-badge-background);
+}
+
+/* Left accent stripe per issue type */
+.decoded-issue-error { border-left: 3px solid var(--vscode-editorError-foreground, var(--vscode-errorForeground)); padding-left: 8px; }
+.decoded-issue-warning { border-left: 3px solid var(--vscode-editorWarning-foreground, var(--vscode-charts-yellow)); padding-left: 8px; }
+.decoded-issue-missing { border-left: 3px solid var(--vscode-charts-purple, var(--vscode-textLink-foreground)); padding-left: 8px; }
+.decoded-issue-suggestion { border-left: 3px solid var(--vscode-descriptionForeground, var(--decoded-border)); padding-left: 8px; }
+
+.decoded-issue-line {
+  font-size: 0.78em;
+  padding: 1px 6px;
+  border-radius: 4px;
+  color: var(--vscode-textLink-foreground);
+  background: none;
+  border: 1px solid var(--decoded-border);
+  cursor: pointer;
+}
+
+.decoded-issue-line:hover {
+  background-color: var(--vscode-toolbar-hoverBackground, rgba(128, 128, 128, 0.15));
+}
+
+.decoded-issue-part {
+  margin: 3px 0;
+}
+
+.decoded-issue-label {
+  font-weight: 600;
+  opacity: 0.85;
+}
+
+/* ---- Diagnose: command explanation ---- */
+.decoded-cmd-explain {
+  margin-top: 8px;
+  opacity: 0.85;
+  font-size: 0.95em;
+}

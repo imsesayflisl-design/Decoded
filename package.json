@@ -2,7 +2,7 @@
   "name": "decoded",
   "displayName": "Decoded",
   "description": "Explains your coding errors to teach you, right where you code.",
-  "version": "0.0.7",
+  "version": "0.0.8",
   "publisher": "Decoded",
   "author": {
     "name": "Idriss M. Sesay"
@@ -115,6 +115,16 @@
         "command": "decoded.clearHistory",
         "title": "Decoded: Clear History",
         "icon": "$(trash)"
+      },
+      {
+        "command": "decoded.reviewFile",
+        "title": "Decoded: Review File",
+        "icon": "$(checklist)"
+      },
+      {
+        "command": "decoded.diagnoseError",
+        "title": "Decoded: Diagnose Error",
+        "icon": "$(debug)"
       }
     ],
     "viewsContainers": {
@@ -142,6 +152,24 @@
           "command": "decoded.explainError",
           "group": "navigation@9",
           "when": "editorTextFocus"
+        },
+        {
+          "command": "decoded.reviewFile",
+          "group": "navigation@10",
+          "when": "editorTextFocus"
+        }
+      ],
+      "editor/title": [
+        {
+          "command": "decoded.reviewFile",
+          "group": "navigation",
+          "when": "editorIsOpen"
+        }
+      ],
+      "terminal/context": [
+        {
+          "command": "decoded.diagnoseError",
+          "group": "navigation"
         }
       ],
       "view/title": [

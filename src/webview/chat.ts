@@ -15,6 +15,9 @@ interface Explanation {
   whatItMeans: { explanation: string; relevantCode: string };
   whyItsHappening: string;
   howToFix: { steps: string[]; brokenCode: string; correctedCode: string };
+  // Optional: present when the fix is a terminal command. Older history
+  // entries won't have it, so treat as possibly undefined.
+  fixCommand?: string;
   howToAvoidNextTime: string;
 }
 
@@ -23,12 +26,41 @@ interface PromptAction {
   action: string;
 }
 
+type IssueType = "error" | "warning" | "missing" | "suggestion";
+
+interface ReviewIssue {
+  title: string;
+  line: number;
+  type: IssueType;
+  whatsWrong: string;
+  whyItMatters: string;
+  howToFix: string;
+  fixedCode: string;
+}
+
+interface Diagnosis {
+  category: "setup" | "code";
+  diagnosis: string;
+  cause: string;
+  fix: { steps: string[]; command: string; explanation: string };
+  preventNextTime: string;
+}
+
 type TranscriptItem =
   | { kind: "user"; id: string; title: string }
   | { kind: "explanation"; id: string; explanation: Explanation; canApplyFix: boolean }
   | { kind: "assistant"; id: string; markdown: string }
   | { kind: "error"; id: string; message: string }
-  | { kind: "prompt"; id: string; text: string; actions: PromptAction[] };
+  | { kind: "prompt"; id: string; text: string; actions: PromptAction[] }
+  | {
+      kind: "review";
+      id: string;
+      summary: string;
+      issues: ReviewIssue[];
+      file: string;
+      language: string;
+    }
+  | { kind: "diagnosis"; id: string; diagnosis: Diagnosis };
 
 interface ErrorItem {
   key: string;
@@ -235,23 +267,52 @@ function renderExplanation(item: {
     ol.appendChild(el("li", undefined, step));
   }
   s3.body.appendChild(ol);
-  const fix = el("div", "decoded-fix");
-  const before = el("div", "decoded-before");
-  before.appendChild(el("div", "decoded-code-label", "Before"));
-  before.appendChild(codeBlock(e.howToFix.brokenCode, e.language));
-  const after = el("div", "decoded-after");
-  after.appendChild(el("div", "decoded-code-label", "After"));
-  after.appendChild(codeBlock(e.howToFix.correctedCode, e.language));
-  fix.appendChild(before);
-  fix.appendChild(after);
-  s3.body.appendChild(fix);
-  if (item.canApplyFix) {
-    const btn = el("button", "decoded-apply-fix", "Apply fix");
-    btn.type = "button";
-    btn.addEventListener("click", () =>
-      vscode.postMessage({ type: "applyFix", messageId: item.id })
+
+  // Command fix: shown prominently with Copy / Run when the right fix is a
+  // terminal command (e.g. "npm install"), not a code change.
+  const cmd = (e.fixCommand ?? "").trim();
+  if (cmd) {
+    s3.body.appendChild(codeBlock(cmd, "shellscript"));
+    const row = el("div", "decoded-prompt-actions");
+    const copyBtn = el("button", "decoded-apply-fix", "Copy command");
+    copyBtn.type = "button";
+    copyBtn.addEventListener("click", () =>
+      vscode.postMessage({ type: "copyCommand", command: cmd })
     );
-    s3.body.appendChild(btn);
+    const runBtn = el("button", "decoded-apply-fix", "Run in terminal");
+    runBtn.type = "button";
+    runBtn.addEventListener("click", () =>
+      vscode.postMessage({ type: "runCommand", command: cmd })
+    );
+    row.appendChild(copyBtn);
+    row.appendChild(runBtn);
+    s3.body.appendChild(row);
+  }
+
+  // Before/After code fix — only when there's actually a code change to show.
+  const hasCodeFix =
+    e.howToFix.brokenCode.trim() !== "" ||
+    e.howToFix.correctedCode.trim() !== "";
+  if (hasCodeFix) {
+    const fix = el("div", "decoded-fix");
+    const before = el("div", "decoded-before");
+    before.appendChild(el("div", "decoded-code-label", "Before"));
+    before.appendChild(codeBlock(e.howToFix.brokenCode, e.language));
+    const after = el("div", "decoded-after");
+    after.appendChild(el("div", "decoded-code-label", "After"));
+    after.appendChild(codeBlock(e.howToFix.correctedCode, e.language));
+    fix.appendChild(before);
+    fix.appendChild(after);
+    s3.body.appendChild(fix);
+    // Apply fix only makes sense when there's corrected code to write.
+    if (item.canApplyFix && e.howToFix.correctedCode.trim() !== "") {
+      const btn = el("button", "decoded-apply-fix", "Apply fix");
+      btn.type = "button";
+      btn.addEventListener("click", () =>
+        vscode.postMessage({ type: "applyFix", messageId: item.id })
+      );
+      s3.body.appendChild(btn);
+    }
   }
   card.appendChild(s3.wrap);
 
@@ -283,6 +344,161 @@ function renderPrompt(item: {
     row.appendChild(btn);
   }
   card.appendChild(row);
+  return card;
+}
+
+// --- Review File card (Capability 1). ---
+
+const ISSUE_ORDER: Record<IssueType, number> = {
+  error: 0,
+  warning: 1,
+  missing: 2,
+  suggestion: 3,
+};
+const ISSUE_LABEL: Record<IssueType, string> = {
+  error: "Error",
+  warning: "Warning",
+  missing: "Missing",
+  suggestion: "Suggestion",
+};
+
+function renderIssue(
+  issue: ReviewIssue,
+  file: string,
+  language: string
+): HTMLElement {
+  const wrap = el("section", `decoded-issue decoded-issue-${issue.type}`);
+
+  const head = el("div", "decoded-issue-head");
+  head.appendChild(
+    el("span", `decoded-badge decoded-badge-${issue.type}`, ISSUE_LABEL[issue.type])
+  );
+  head.appendChild(el("span", "decoded-issue-title", issue.title));
+  if (issue.line > 0) {
+    const lineBtn = el("button", "decoded-issue-line", `line ${issue.line}`);
+    lineBtn.type = "button";
+    lineBtn.title = "Jump to this line";
+    lineBtn.addEventListener("click", () =>
+      vscode.postMessage({ type: "openLocation", file, line: issue.line })
+    );
+    head.appendChild(lineBtn);
+  }
+  wrap.appendChild(head);
+
+  const part = (label: string, text: string): void => {
+    if (!text) {
+      return;
+    }
+    const p = el("p", "decoded-issue-part");
+    p.appendChild(el("span", "decoded-issue-label", label));
+    p.appendChild(document.createTextNode(" " + text));
+    wrap.appendChild(p);
+  };
+  part("What's wrong:", issue.whatsWrong);
+  part("Why it matters:", issue.whyItMatters);
+  part("How to fix:", issue.howToFix);
+  if (issue.fixedCode && issue.fixedCode.trim()) {
+    wrap.appendChild(codeBlock(issue.fixedCode, language));
+  }
+  return wrap;
+}
+
+function renderReview(item: {
+  summary: string;
+  issues: ReviewIssue[];
+  file: string;
+  language: string;
+}): HTMLElement {
+  const card = el("article", "decoded-card decoded-review");
+
+  // Count line, e.g. "3 issues · 1 error, 1 missing, 1 suggestion".
+  const counts: Record<IssueType, number> = {
+    error: 0,
+    warning: 0,
+    missing: 0,
+    suggestion: 0,
+  };
+  for (const i of item.issues) {
+    counts[i.type]++;
+  }
+  const total = item.issues.length;
+  const breakdown = (["error", "warning", "missing", "suggestion"] as const)
+    .filter((t) => counts[t] > 0)
+    .map((t) => `${counts[t]} ${t}`)
+    .join(", ");
+  const countText =
+    total === 0
+      ? "No issues found"
+      : `${total} issue${total === 1 ? "" : "s"}${breakdown ? ` · ${breakdown}` : ""}`;
+
+  const header = el("div", "decoded-card-header");
+  header.appendChild(el("span", "decoded-lang", countText));
+  card.appendChild(header);
+
+  card.appendChild(el("p", "decoded-prose decoded-review-summary", item.summary));
+
+  const sorted = item.issues
+    .slice()
+    .sort((a, b) => ISSUE_ORDER[a.type] - ISSUE_ORDER[b.type]);
+  for (const issue of sorted) {
+    card.appendChild(renderIssue(issue, item.file, item.language));
+  }
+  return card;
+}
+
+// --- Diagnose card (Capability 2). ---
+
+function renderDiagnosis(item: { diagnosis: Diagnosis }): HTMLElement {
+  const d = item.diagnosis;
+  const card = el("article", "decoded-card");
+
+  const header = el("div", "decoded-card-header");
+  header.appendChild(el("span", "decoded-lang", "Diagnosis"));
+  card.appendChild(header);
+
+  const s1 = section("1", "What's wrong");
+  s1.body.appendChild(el("p", "decoded-prose", d.diagnosis));
+  card.appendChild(s1.wrap);
+
+  const s2 = section("2", "Why it's happening");
+  s2.body.appendChild(el("p", "decoded-prose", d.cause));
+  card.appendChild(s2.wrap);
+
+  const s3 = section("3", "How to fix it");
+  if (d.fix.steps.length > 0) {
+    const ol = el("ol", "decoded-steps");
+    for (const step of d.fix.steps) {
+      ol.appendChild(el("li", undefined, step));
+    }
+    s3.body.appendChild(ol);
+  }
+  if (d.fix.command && d.fix.command.trim()) {
+    s3.body.appendChild(codeBlock(d.fix.command, "shellscript"));
+    const row = el("div", "decoded-prompt-actions");
+    const copyBtn = el("button", "decoded-apply-fix", "Copy command");
+    copyBtn.type = "button";
+    copyBtn.addEventListener("click", () =>
+      vscode.postMessage({ type: "copyCommand", command: d.fix.command })
+    );
+    const runBtn = el("button", "decoded-apply-fix", "Run in terminal");
+    runBtn.type = "button";
+    runBtn.addEventListener("click", () =>
+      vscode.postMessage({ type: "runCommand", command: d.fix.command })
+    );
+    row.appendChild(copyBtn);
+    row.appendChild(runBtn);
+    s3.body.appendChild(row);
+  }
+  if (d.fix.explanation) {
+    s3.body.appendChild(
+      el("p", "decoded-prose decoded-cmd-explain", d.fix.explanation)
+    );
+  }
+  card.appendChild(s3.wrap);
+
+  const s4 = section("4", "How to avoid it next time");
+  s4.body.appendChild(el("p", "decoded-prose", d.preventNextTime));
+  card.appendChild(s4.wrap);
   return card;
 }
 
@@ -320,6 +536,12 @@ function renderItem(item: TranscriptItem): void {
       break;
     case "prompt":
       node = assistantRow(renderPrompt(item));
+      break;
+    case "review":
+      node = assistantRow(renderReview(item));
+      break;
+    case "diagnosis":
+      node = assistantRow(renderDiagnosis(item));
       break;
   }
   transcript.appendChild(node);

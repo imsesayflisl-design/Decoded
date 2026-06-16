@@ -17,9 +17,9 @@ export interface HostedConfig {
 }
 
 export const HOSTED: HostedConfig = {
-  // Flip to true once proxyUrl points at a deployed Worker.
-  enabled: false,
-  proxyUrl: "https://decoded-proxy.example.workers.dev",
+  // Hosted mode is live: users without their own key go through the proxy.
+  enabled: true,
+  proxyUrl: "https://decoded-ai.decoded-ai.workers.dev",
   appToken: "decoded-public-v1",
 };
 

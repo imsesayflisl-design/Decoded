@@ -4,6 +4,7 @@
 .env.local
 out/**
 node_modules/**
+proxy/**
 src/**
 .gitignore
 .yarnrc

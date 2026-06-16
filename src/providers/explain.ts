@@ -1,3 +1,4 @@
+import type { ZodType } from "zod";
 import { ExplanationSchema, type Explanation } from "../schema";
 import type {
   ChatTurn,
@@ -13,12 +14,14 @@ export const SYSTEM_PROMPT = `You are Decoded, a patient senior engineer who exp
   "whatItMeans": { "explanation": "...", "relevantCode": "..." },
   "whyItsHappening": "...",
   "howToFix": { "steps": ["...", "..."], "brokenCode": "...", "correctedCode": "..." },
+  "fixCommand": "...",
   "howToAvoidNextTime": "..."
 }
 Rules:
 - whatItMeans.explanation: 1-3 plain-English sentences, no jargon dump. whatItMeans.relevantCode: the exact line or snippet the error points to (from the user's code if provided, otherwise a short representative example).
 - whyItsHappening: the single most likely cause in THIS specific case; reference the user's actual code or values when provided. Do not list many possibilities.
-- howToFix.steps: short numbered steps. howToFix.brokenCode: the user's relevant broken code. howToFix.correctedCode: the minimal corrected version.
+- howToFix.steps: short numbered steps. howToFix.brokenCode: the user's relevant broken code. howToFix.correctedCode: the minimal corrected version (use "" when the fix is a command, not a code change).
+- fixCommand: when the right fix is a terminal command (e.g. an install for a missing dependency like "npm install", a missing package "npm install <pkg>", "pip install <pkg>", running a build, etc.), put the single exact command here; otherwise "". For run/setup/dependency/environment errors, prefer the command. Pick the package manager from the project's lockfile if mentioned (package-lock.json->npm, yarn.lock->yarn, pnpm-lock.yaml->pnpm).
 - howToAvoidNextTime: one practical habit or rule that prevents this whole class of error.
 - If language is missing, detect it and set the language field.
 - If no code is provided or the error is vague, state your assumption inside the relevant field and still give a useful general cause, keeping the four-part structure.
@@ -61,6 +64,7 @@ export const EXPLANATION_JSON_SCHEMA: Record<string, unknown> = {
       required: ["steps", "brokenCode", "correctedCode"],
       additionalProperties: false,
     },
+    fixCommand: { type: "string" },
     howToAvoidNextTime: { type: "string" },
   },
   required: [
@@ -68,6 +72,7 @@ export const EXPLANATION_JSON_SCHEMA: Record<string, unknown> = {
     "whatItMeans",
     "whyItsHappening",
     "howToFix",
+    "fixCommand",
     "howToAvoidNextTime",
   ],
   additionalProperties: false,
@@ -115,6 +120,52 @@ function extractJson(text: string): string {
   return t;
 }
 
+// Generic structured-output call shared by every Decoded JSON feature
+// (explain, review, diagnose): sends a JSON-schema request, extracts and
+// Zod-validates the reply, and retries ONCE with a stricter reminder before
+// giving up. Throws a user-facing Error if the model never returns valid JSON.
+export async function runStructured<T>(
+  provider: LLMProvider,
+  opts: ProviderOptions,
+  system: string,
+  userMessage: string,
+  jsonSchema: Record<string, unknown>,
+  schema: ZodType<T>,
+  maxTokens: number
+): Promise<T> {
+  const attempt = async (sys: string): Promise<T | null> => {
+    const req: CompletionRequest = {
+      system: sys,
+      messages: [{ role: "user", content: userMessage }],
+      maxTokens,
+      jsonSchema,
+    };
+    const text = await provider.complete(req, opts);
+    try {
+      const parsed = schema.safeParse(JSON.parse(extractJson(text)));
+      return parsed.success ? parsed.data : null;
+    } catch {
+      return null;
+    }
+  };
+
+  const first = await attempt(system);
+  if (first) {
+    return first;
+  }
+  // Stricter retry: re-state that the reply must match the JSON shape exactly.
+  const second = await attempt(
+    system +
+      "\n\nIMPORTANT: Your previous reply did not match the required JSON shape. Return ONLY the JSON object with exactly the required keys and types. No markdown, no prose."
+  );
+  if (second) {
+    return second;
+  }
+  throw new Error(
+    "The model didn't return a valid response. Please try again."
+  );
+}
+
 // Calls the provider once and returns validated data, or null if the
 // response did not validate against the four-part schema.
 async function callOnce(
@@ -157,7 +208,7 @@ export async function explainError(
   // Stricter retry: re-state the contract emphatically.
   const stricterSystem =
     SYSTEM_PROMPT +
-    "\n\nIMPORTANT: Your previous reply did not match the required JSON shape. Return ONLY the JSON object with exactly the keys: language, whatItMeans.explanation, whatItMeans.relevantCode, whyItsHappening, howToFix.steps, howToFix.brokenCode, howToFix.correctedCode, howToAvoidNextTime. No markdown, no prose.";
+    "\n\nIMPORTANT: Your previous reply did not match the required JSON shape. Return ONLY the JSON object with exactly the keys: language, whatItMeans.explanation, whatItMeans.relevantCode, whyItsHappening, howToFix.steps, howToFix.brokenCode, howToFix.correctedCode, fixCommand, howToAvoidNextTime. No markdown, no prose.";
 
   const second = await callOnce(provider, opts, userMessage, stricterSystem);
   if (second) {
