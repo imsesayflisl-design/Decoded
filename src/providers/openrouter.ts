@@ -49,7 +49,8 @@ export const openrouterProvider: LLMProvider = {
   ): Promise<string> {
     const client = new OpenAI({
       apiKey: opts.apiKey,
-      baseURL: OPENROUTER_BASE_URL,
+      // Hosted mode routes through the Decoded proxy; otherwise straight to OpenRouter.
+      baseURL: opts.baseURL ?? OPENROUTER_BASE_URL,
       // 2-minute timeout — free-tier models can queue and think for a while.
       timeout: 120000,
       maxRetries: 2,

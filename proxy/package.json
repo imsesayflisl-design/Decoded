@@ -1,0 +1,14 @@
+{
+  "name": "decoded-proxy",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Cloudflare Worker that injects provider API keys for the Decoded extension.",
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy",
+    "login": "wrangler login"
+  },
+  "devDependencies": {
+    "wrangler": "^3.90.0"
+  }
+}

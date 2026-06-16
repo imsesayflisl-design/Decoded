@@ -26,6 +26,9 @@ export interface CompletionRequest {
 export interface ProviderOptions {
   apiKey: string;
   model: string;
+  // Overrides the provider's default API endpoint. Used by hosted mode to route
+  // calls through the Decoded proxy (which injects the real key server-side).
+  baseURL?: string;
 }
 
 export interface LLMProvider {

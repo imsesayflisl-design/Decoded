@@ -50,7 +50,8 @@ export const geminiProvider: LLMProvider = {
     // 2-minute timeout, matching the other providers.
     const ai = new genai.GoogleGenAI({
       apiKey: opts.apiKey,
-      httpOptions: { timeout: 120000 },
+      // Hosted mode points this at the Decoded proxy; otherwise the SDK default.
+      httpOptions: { timeout: 120000, baseUrl: opts.baseURL },
     });
     const request = {
       model: opts.model,

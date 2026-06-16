@@ -3,7 +3,7 @@ import { runExplainError, type ExplainTarget } from "./explain";
 import {
   setApiKeyCommand,
   clearApiKeyCommand,
-  ensureApiKey,
+  resolveOrPromptAuth,
   migrateLegacyApiKey,
 } from "./secrets";
 import { DecodedCodeActionProvider } from "./codeActions";
@@ -329,8 +329,8 @@ export function activate(context: vscode.ExtensionContext) {
       return;
     }
     const { provider, model } = getActiveProvider();
-    const apiKey = await ensureApiKey(context, provider.id);
-    if (!apiKey) {
+    const auth = await resolveOrPromptAuth(context, provider.id);
+    if (!auth) {
       vscode.window.showWarningMessage(
         `Decoded: A ${provider.label} API key is required to chat.`
       );
@@ -355,7 +355,7 @@ export function activate(context: vscode.ExtensionContext) {
       let lastUpdate = 0;
       const answer = await chat(
         provider,
-        { apiKey, model },
+        { apiKey: auth.apiKey, model, baseURL: auth.baseURL },
         conversation.buildHistory(),
         modelText,
         (delta) => {

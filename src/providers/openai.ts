@@ -39,6 +39,8 @@ export const openaiProvider: LLMProvider = {
     // 2-minute timeout — reasoning models can think well past 30s.
     const client = new OpenAI({
       apiKey: opts.apiKey,
+      // Hosted mode points this at the Decoded proxy; otherwise the SDK default.
+      baseURL: opts.baseURL,
       timeout: 120000,
       maxRetries: 2,
     });

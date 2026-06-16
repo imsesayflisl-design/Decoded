@@ -1,7 +1,7 @@
 import * as vscode from "vscode";
 import { explainError, type ExplainInput } from "./providers/explain";
 import { getActiveProvider } from "./providers";
-import { ensureApiKey } from "./secrets";
+import { resolveOrPromptAuth } from "./secrets";
 import type { ExplainSource } from "./applyFix";
 import type { DecodedChatViewProvider } from "./chatView";
 import type { ConversationManager } from "./conversation";
@@ -156,8 +156,8 @@ export async function runExplainError(
   }
 
   const { provider, model } = getActiveProvider();
-  const apiKey = await ensureApiKey(context, provider.id);
-  if (!apiKey) {
+  const auth = await resolveOrPromptAuth(context, provider.id);
+  if (!auth) {
     vscode.window.showWarningMessage(
       `Decoded: A ${provider.label} API key is required to explain errors.`
     );
@@ -170,7 +170,11 @@ export async function runExplainError(
   chatView.addUserMessage(titleFrom(gathered.errorMessage));
   chatView.setBusy(true, "Decoded is explaining the error…");
   try {
-    const result = await explainError(provider, { apiKey, model }, input);
+    const result = await explainError(
+      provider,
+      { apiKey: auth.apiKey, model, baseURL: auth.baseURL },
+      input
+    );
     chatView.addExplanation(result, gathered.source);
     conversation.startSession(input, result);
     await history.add(titleFrom(gathered.errorMessage), result);

@@ -53,6 +53,8 @@ export const anthropicProvider: LLMProvider = {
     // No sampling params and no `thinking` — both 400 on the newest models.
     const client = new Anthropic({
       apiKey: opts.apiKey,
+      // Hosted mode points this at the Decoded proxy; otherwise the SDK default.
+      baseURL: opts.baseURL,
       timeout: 120000,
       maxRetries: 2,
     });

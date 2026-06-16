@@ -2,7 +2,7 @@ import * as vscode from "vscode";
 import { gatherFromDiagnostic, toExplainInput } from "./explain";
 import { explainError } from "./providers/explain";
 import { getActiveProvider } from "./providers";
-import { ensureApiKey } from "./secrets";
+import { resolveOrPromptAuth } from "./secrets";
 import type { DecodedChatViewProvider } from "./chatView";
 import type { DiagnosticsWatcher, ErrorItem } from "./diagnostics";
 import type { HistoryStore } from "./history";
@@ -48,8 +48,8 @@ export async function fixAllErrors(
   history: HistoryStore
 ): Promise<void> {
   const { provider, model } = getActiveProvider();
-  const apiKey = await ensureApiKey(context, provider.id);
-  if (!apiKey) {
+  const auth = await resolveOrPromptAuth(context, provider.id);
+  if (!auth) {
     vscode.window.showWarningMessage(
       `Decoded: A ${provider.label} API key is required to fix errors.`
     );
@@ -93,7 +93,7 @@ export async function fixAllErrors(
         const gathered = gatherFromDiagnostic(document, live);
         const result = await explainError(
           provider,
-          { apiKey, model },
+          { apiKey: auth.apiKey, model, baseURL: auth.baseURL },
           toExplainInput(gathered)
         );
 

@@ -2,6 +2,7 @@ import * as vscode from "vscode";
 import type { LLMProvider, ProviderId } from "./providers/types";
 import { getProvider, PROVIDERS } from "./providers";
 import { getEnvFileApiKey } from "./envFile";
+import { HOSTED, hostedBaseUrl } from "./hosted";
 
 // One SecretStorage key per provider. Keys are NEVER written to settings,
 // code, or logs.
@@ -66,6 +67,48 @@ async function promptForKey(
     placeHolder: provider.keyPlaceholder,
   });
   return entered && entered.trim() ? entered.trim() : undefined;
+}
+
+// What a provider call needs to authenticate: an API key, and optionally a
+// base URL override (set in hosted mode to route through the Decoded proxy).
+export interface ProviderAuth {
+  apiKey: string;
+  baseURL?: string;
+}
+
+// Resolves how to authenticate a provider call, WITHOUT ever prompting:
+//   1. A user's own key (.env.local or SecretStorage) wins — call the provider
+//      directly, so power users get full models and no shared rate limits.
+//   2. Otherwise, if hosted mode is enabled, use the public app token + proxy
+//      base URL so a fresh install works with no key prompt.
+//   3. Otherwise return undefined — the caller falls back to prompting.
+export async function resolveProviderAuth(
+  context: vscode.ExtensionContext,
+  providerId: ProviderId
+): Promise<ProviderAuth | undefined> {
+  const userKey = await getApiKey(context, providerId);
+  if (userKey) {
+    return { apiKey: userKey };
+  }
+  if (HOSTED.enabled) {
+    return { apiKey: HOSTED.appToken, baseURL: hostedBaseUrl(providerId) };
+  }
+  return undefined;
+}
+
+// Like resolveProviderAuth, but if nothing is available (no user key, hosting
+// off) it prompts the user for a key as a last resort. Returns undefined only
+// if the user cancels that prompt.
+export async function resolveOrPromptAuth(
+  context: vscode.ExtensionContext,
+  providerId: ProviderId
+): Promise<ProviderAuth | undefined> {
+  const auth = await resolveProviderAuth(context, providerId);
+  if (auth) {
+    return auth;
+  }
+  const entered = await ensureApiKey(context, providerId);
+  return entered ? { apiKey: entered } : undefined;
 }
 
 // Reads the key for a provider, prompting and storing it if missing.

@@ -1,0 +1,14 @@
+name = "decoded-ai"
+main = "src/worker.ts"
+compatibility_date = "2025-01-01"
+
+# Public, non-secret gate. Must match the extension's hosted.appToken
+# (src/hosted.ts). Change both together to rotate it.
+[vars]
+DECODED_APP_TOKEN = "decoded-public-v1"
+
+# The real provider keys are NOT stored here. Set them as encrypted secrets:
+#   npx wrangler secret put OPENAI_API_KEY
+#   npx wrangler secret put OPENROUTER_API_KEY
+#   npx wrangler secret put ANTHROPIC_API_KEY
+#   npx wrangler secret put GEMINI_API_KEY
