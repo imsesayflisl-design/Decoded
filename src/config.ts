@@ -13,10 +13,10 @@ const VALID_PROVIDERS: ProviderId[] = [
 export function getActiveProviderId(): ProviderId {
   const raw = vscode.workspace
     .getConfiguration("decoded")
-    .get<string>("provider", "openai");
+    .get<string>("provider", "anthropic");
   return (VALID_PROVIDERS as string[]).includes(raw)
     ? (raw as ProviderId)
-    : "openai";
+    : "anthropic";
 }
 
 // The model configured for a provider, or undefined to use its default.
@@ -37,6 +37,14 @@ export function getMaxListedErrors(): number {
     .getConfiguration("decoded")
     .get<number>("errors.maxListed", 50);
   return Math.max(1, Math.min(200, n));
+}
+
+// Whether to auto-detect failed terminal commands (capture only — the AI runs
+// only when the user clicks Explain).
+export function getTerminalAutoDetect(): boolean {
+  return vscode.workspace
+    .getConfiguration("decoded")
+    .get<boolean>("terminal.autoDetect", true);
 }
 
 export async function setActiveProviderId(id: ProviderId): Promise<void> {

@@ -26,6 +26,7 @@ Rules:
 - command: choose the package manager from the project's lockfile — package-lock.json -> npm, yarn.lock -> yarn, pnpm-lock.yaml -> pnpm (default to npm). For a missing package give the install command for that package (e.g. "npm install" to install everything, or "npm install <pkg>" for one). Use a single, exact, copy-pasteable command; use "" only if no single command applies.
 - steps: short, ordered actions (e.g. ["Run npm install in the project root", "Then run npm run dev again"]).
 - Teach: explain what the command does and why it was missing.
+- LANGUAGE: Write for a beginner. Use short, everyday sentences and avoid jargon. If you must use a technical term, explain it in plain words right after (e.g. "node_modules — the folder that holds the code packages your project needs"). Talk like a patient friend, not a manual. Never assume prior knowledge.
 Return only the JSON.`;
 
 // Strict-mode-safe JSON Schema; DiagnosisSchema (Zod) is the final authority.

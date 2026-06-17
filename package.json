@@ -44,7 +44,7 @@
           "type": "string",
           "enum": ["anthropic", "openai", "gemini", "openrouter"],
           "enumItemLabels": ["Anthropic (Claude)", "OpenAI (GPT)", "Google (Gemini)", "OpenRouter"],
-          "default": "openai",
+          "default": "anthropic",
           "description": "Which AI provider Decoded uses to explain errors."
         },
         "decoded.anthropic.model": {
@@ -80,6 +80,11 @@
           "type": "number",
           "default": 50,
           "description": "Maximum number of problems listed in the Decoded sidebar."
+        },
+        "decoded.terminal.autoDetect": {
+          "type": "boolean",
+          "default": true,
+          "description": "Automatically notice when a terminal command fails so Decoded can offer to explain it (it never runs the AI until you click Explain)."
         }
       }
     },

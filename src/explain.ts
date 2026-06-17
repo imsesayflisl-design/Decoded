@@ -2,7 +2,6 @@ import * as vscode from "vscode";
 import { explainError, type ExplainInput } from "./providers/explain";
 import { getActiveProvider } from "./providers";
 import { resolveOrPromptAuth } from "./secrets";
-import type { ExplainSource } from "./applyFix";
 import type { DecodedChatViewProvider } from "./chatView";
 import type { ConversationManager } from "./conversation";
 import type { HistoryStore } from "./history";
@@ -18,8 +17,6 @@ export interface GatheredError {
   errorMessage: string;
   code: string;
   language: string;
-  // Where the error came from — enables "Apply fix" to edit the right range.
-  source: ExplainSource;
 }
 
 // Optional explicit target, passed by the lightbulb / CodeAction so we explain
@@ -73,18 +70,10 @@ export function gatherFromDiagnostic(
     endLine,
     document.lineAt(endLine).text.length
   );
-  // "Apply fix" replaces the full line(s) the diagnostic spans.
-  const fixRange = new vscode.Range(
-    diagnostic.range.start.line,
-    0,
-    diagnostic.range.end.line,
-    document.lineAt(diagnostic.range.end.line).text.length
-  );
   return {
     errorMessage: diagnostic.message,
     code: document.getText(contextRange),
     language: document.languageId,
-    source: { uri: document.uri, range: fixRange },
   };
 }
 
@@ -107,7 +96,6 @@ function gather(editor: vscode.TextEditor): GatheredError | undefined {
       errorMessage: selected,
       code: selected,
       language,
-      source: { uri: document.uri, range: editor.selection },
     };
   }
 
@@ -175,7 +163,7 @@ export async function runExplainError(
       { apiKey: auth.apiKey, model, baseURL: auth.baseURL },
       input
     );
-    chatView.addExplanation(result, gathered.source);
+    chatView.addExplanation(result);
     conversation.startSession(input, result);
     await history.add(titleFrom(gathered.errorMessage), result);
   } catch (err) {

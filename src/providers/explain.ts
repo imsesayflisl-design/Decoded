@@ -25,6 +25,7 @@ Rules:
 - howToAvoidNextTime: one practical habit or rule that prevents this whole class of error.
 - If language is missing, detect it and set the language field.
 - If no code is provided or the error is vague, state your assumption inside the relevant field and still give a useful general cause, keeping the four-part structure.
+- LANGUAGE: Write for a beginner. Use short, everyday sentences and avoid jargon. If you must use a technical term, explain it in plain words right after (e.g. "a dependency — a code package your project needs to run"). Prefer "the file that stores your secret keys" over assuming the reader knows what something is. Never assume prior knowledge.
 Return only the JSON.`;
 
 // System prompt for conversational follow-up questions after an explanation.
@@ -33,7 +34,8 @@ Rules:
 - Answer in plain markdown — no JSON, no four-part structure.
 - Stay focused on this error, the user's code, and closely related concepts.
 - Keep answers short and concrete; put any code in fenced code blocks with a language tag.
-- Teach, don't just patch: explain the why behind your answer in a sentence or two.`;
+- Teach, don't just patch: explain the why behind your answer in a sentence or two.
+- Write for a beginner: short, everyday sentences, no jargon. If you must use a technical term, explain it in plain words right after. Never assume prior knowledge.`;
 
 // System prompt for "Ask Decoded" — general engineering Q&A that is also
 // codebase-aware when CONTEXT blocks (the user's files) are provided.
@@ -43,7 +45,8 @@ Rules:
 - When CONTEXT blocks (the user's own files/snippets) are provided, ground your answer in THAT code: refer to the real names, files, and lines, and explain how the code actually works.
 - If the provided context isn't enough to be sure, say what else you'd need (e.g. which file) instead of guessing.
 - Teach: explain the "why", not only the "what". Keep it focused and concrete; avoid filler.
-- Do not invent files, APIs, or behaviour that aren't supported by the context or well-established knowledge.`;
+- Do not invent files, APIs, or behaviour that aren't supported by the context or well-established knowledge.
+- Write for a beginner: short, everyday sentences, no jargon. If you must use a technical term, explain it in plain words right after. Never assume prior knowledge.`;
 
 // The JSON Schema for the four-part explanation, hand-written once and shared
 // by every provider's structured-output mode. Kept deliberately simple

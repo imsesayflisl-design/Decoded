@@ -48,7 +48,7 @@ interface Diagnosis {
 
 type TranscriptItem =
   | { kind: "user"; id: string; title: string }
-  | { kind: "explanation"; id: string; explanation: Explanation; canApplyFix: boolean }
+  | { kind: "explanation"; id: string; explanation: Explanation }
   | { kind: "assistant"; id: string; markdown: string }
   | { kind: "error"; id: string; message: string }
   | { kind: "prompt"; id: string; text: string; actions: PromptAction[] }
@@ -60,7 +60,15 @@ type TranscriptItem =
       file: string;
       language: string;
     }
-  | { kind: "diagnosis"; id: string; diagnosis: Diagnosis };
+  | { kind: "diagnosis"; id: string; diagnosis: Diagnosis }
+  | {
+      kind: "captured";
+      id: string;
+      command: string;
+      output: string;
+      exitCode: number;
+      explained: boolean;
+    };
 
 interface ErrorItem {
   key: string;
@@ -240,10 +248,22 @@ function section(
   return { wrap, body: wrap };
 }
 
+// A single "Copy command" button row. Decoded shows the exact command to run
+// and lets the user copy it — it never runs it for them.
+function copyCommandRow(command: string): HTMLElement {
+  const row = el("div", "decoded-prompt-actions");
+  const copyBtn = el("button", "decoded-apply-fix", "Copy command");
+  copyBtn.type = "button";
+  copyBtn.addEventListener("click", () =>
+    vscode.postMessage({ type: "copyCommand", command })
+  );
+  row.appendChild(copyBtn);
+  return row;
+}
+
 function renderExplanation(item: {
   id: string;
   explanation: Explanation;
-  canApplyFix: boolean;
 }): HTMLElement {
   const card = el("article", "decoded-card");
   const e = item.explanation;
@@ -273,23 +293,11 @@ function renderExplanation(item: {
   const cmd = (e.fixCommand ?? "").trim();
   if (cmd) {
     s3.body.appendChild(codeBlock(cmd, "shellscript"));
-    const row = el("div", "decoded-prompt-actions");
-    const copyBtn = el("button", "decoded-apply-fix", "Copy command");
-    copyBtn.type = "button";
-    copyBtn.addEventListener("click", () =>
-      vscode.postMessage({ type: "copyCommand", command: cmd })
-    );
-    const runBtn = el("button", "decoded-apply-fix", "Run in terminal");
-    runBtn.type = "button";
-    runBtn.addEventListener("click", () =>
-      vscode.postMessage({ type: "runCommand", command: cmd })
-    );
-    row.appendChild(copyBtn);
-    row.appendChild(runBtn);
-    s3.body.appendChild(row);
+    s3.body.appendChild(copyCommandRow(cmd));
   }
 
-  // Before/After code fix — only when there's actually a code change to show.
+  // Before/After code fix — shown to TEACH the change. Decoded never writes it
+  // for you; you type the fix yourself (that's the whole point).
   const hasCodeFix =
     e.howToFix.brokenCode.trim() !== "" ||
     e.howToFix.correctedCode.trim() !== "";
@@ -304,15 +312,6 @@ function renderExplanation(item: {
     fix.appendChild(before);
     fix.appendChild(after);
     s3.body.appendChild(fix);
-    // Apply fix only makes sense when there's corrected code to write.
-    if (item.canApplyFix && e.howToFix.correctedCode.trim() !== "") {
-      const btn = el("button", "decoded-apply-fix", "Apply fix");
-      btn.type = "button";
-      btn.addEventListener("click", () =>
-        vscode.postMessage({ type: "applyFix", messageId: item.id })
-      );
-      s3.body.appendChild(btn);
-    }
   }
   card.appendChild(s3.wrap);
 
@@ -474,20 +473,7 @@ function renderDiagnosis(item: { diagnosis: Diagnosis }): HTMLElement {
   }
   if (d.fix.command && d.fix.command.trim()) {
     s3.body.appendChild(codeBlock(d.fix.command, "shellscript"));
-    const row = el("div", "decoded-prompt-actions");
-    const copyBtn = el("button", "decoded-apply-fix", "Copy command");
-    copyBtn.type = "button";
-    copyBtn.addEventListener("click", () =>
-      vscode.postMessage({ type: "copyCommand", command: d.fix.command })
-    );
-    const runBtn = el("button", "decoded-apply-fix", "Run in terminal");
-    runBtn.type = "button";
-    runBtn.addEventListener("click", () =>
-      vscode.postMessage({ type: "runCommand", command: d.fix.command })
-    );
-    row.appendChild(copyBtn);
-    row.appendChild(runBtn);
-    s3.body.appendChild(row);
+    s3.body.appendChild(copyCommandRow(d.fix.command));
   }
   if (d.fix.explanation) {
     s3.body.appendChild(
@@ -499,6 +485,46 @@ function renderDiagnosis(item: { diagnosis: Diagnosis }): HTMLElement {
   const s4 = section("4", "How to avoid it next time");
   s4.body.appendChild(el("p", "decoded-prose", d.preventNextTime));
   card.appendChild(s4.wrap);
+  return card;
+}
+
+// --- Captured terminal error card (auto-detect, explain-on-click). ---
+
+function renderCaptured(item: {
+  id: string;
+  command: string;
+  output: string;
+  explained: boolean;
+}): HTMLElement {
+  const card = el("article", "decoded-card decoded-captured");
+
+  const header = el("div", "decoded-card-header");
+  header.appendChild(el("span", "decoded-lang", "⚠ A command failed"));
+  card.appendChild(header);
+
+  if (item.command.trim()) {
+    card.appendChild(el("p", "decoded-prose", "While running:"));
+    card.appendChild(codeBlock(item.command, "shellscript"));
+  }
+
+  card.appendChild(el("p", "decoded-prose", "What the terminal showed:"));
+  card.appendChild(codeBlock(item.output, "shellscript"));
+
+  const row = el("div", "decoded-prompt-actions");
+  const btn = el(
+    "button",
+    "decoded-apply-fix",
+    item.explained ? "Explained" : "Explain this error"
+  );
+  btn.type = "button";
+  btn.disabled = item.explained;
+  btn.addEventListener("click", () => {
+    btn.disabled = true;
+    btn.textContent = "Explaining…";
+    vscode.postMessage({ type: "explainCapture", id: item.id });
+  });
+  row.appendChild(btn);
+  card.appendChild(row);
   return card;
 }
 
@@ -542,6 +568,11 @@ function renderItem(item: TranscriptItem): void {
       break;
     case "diagnosis":
       node = assistantRow(renderDiagnosis(item));
+      break;
+    case "captured":
+      node = assistantRow(renderCaptured(item));
+      // Tagged so a later "captureExplained" message can disable its button.
+      node.dataset.itemId = item.id;
       break;
   }
   transcript.appendChild(node);
@@ -855,6 +886,18 @@ window.addEventListener("message", (event) => {
         busyBar.hidden = true; // the pulsing logo replaces the busy bar
         body.replaceChildren(renderMarkdown(msg.markdown as string));
         (row as HTMLElement).scrollIntoView({ block: "end" });
+      }
+      break;
+    }
+    case "captureExplained": {
+      // The captured-error card was explained — disable its Explain button.
+      const row = transcript.querySelector(
+        `[data-item-id="${msg.id as string}"]`
+      );
+      const btn = row?.querySelector<HTMLButtonElement>(".decoded-apply-fix");
+      if (btn) {
+        btn.disabled = true;
+        btn.textContent = "Explained";
       }
       break;
     }

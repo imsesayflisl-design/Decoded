@@ -14,11 +14,15 @@ import { DiagnosticsWatcher } from "./diagnostics";
 import { chat, ASK_SYSTEM_PROMPT } from "./providers/explain";
 import { gatherAskContext, type FileRef } from "./codebaseContext";
 import { PROVIDERS, getActiveProvider } from "./providers";
-import { setActiveProviderId, setConfiguredModel } from "./config";
+import {
+  setActiveProviderId,
+  setConfiguredModel,
+  getTerminalAutoDetect,
+} from "./config";
 import { scanWorkspace } from "./scan";
-import { fixAllErrors } from "./autofix";
 import { runReviewFile } from "./review";
-import { runDiagnose } from "./diagnose";
+import { runDiagnose, diagnoseErrorText } from "./diagnose";
+import { TerminalCaptureWatcher, type CapturedError } from "./terminalCapture";
 
 // Chat messages that mean "look for errors" rather than a question for the AI.
 const SCAN_INTENT =
@@ -73,6 +77,7 @@ export function activate(context: vscode.ExtensionContext) {
   const conversation = new ConversationManager();
   const chatView = new DecodedChatViewProvider(context.extensionUri, history);
   const watcher = new DiagnosticsWatcher();
+  const terminalCapture = new TerminalCaptureWatcher();
 
   // Move any pre-multi-provider Anthropic key to its new slot (fire and forget).
   void migrateLegacyApiKey(context);
@@ -86,6 +91,49 @@ export function activate(context: vscode.ExtensionContext) {
 
   // Auto-detected problems feed the sidebar list; the AI runs only on click.
   watcher.onDidChangeErrors((items) => chatView.setErrors(items));
+
+  // --- Auto-captured terminal errors (explain-on-click only). ---
+
+  // id -> the captured command output, kept until the user clicks Explain.
+  const capturedErrors = new Map<string, CapturedError>();
+  // How many captured errors the user hasn't looked at yet (drives the badge).
+  let unexplainedCount = 0;
+
+  // A command failed in the terminal: show a quiet card + badge. We never call
+  // the AI here — only when the user clicks Explain on the card.
+  terminalCapture.onDidCaptureError((capture) => {
+    if (!getTerminalAutoDetect()) {
+      return; // auto-detect turned off in settings
+    }
+    const id = chatView.addCapturedError(capture);
+    capturedErrors.set(id, capture);
+    unexplainedCount++;
+    chatView.setBadge(unexplainedCount);
+  });
+
+  // The "Explain this error" button on a captured-error card.
+  chatView.onExplainCapture(async (id) => {
+    const capture = capturedErrors.get(id);
+    if (!capture) {
+      return; // already handled or lost (e.g. after New Chat)
+    }
+    const title =
+      capture.command.trim() ||
+      capture.output.split("\n")[0]?.trim() ||
+      "A terminal command failed";
+    const rendered = await diagnoseErrorText(
+      context,
+      chatView,
+      capture.output,
+      title
+    );
+    if (rendered) {
+      capturedErrors.delete(id);
+      chatView.markCaptureExplained(id);
+      unexplainedCount = Math.max(0, unexplainedCount - 1);
+      chatView.setBadge(unexplainedCount);
+    }
+  });
 
   // --- Context attachments (the + button in the composer). ---
 
@@ -299,15 +347,9 @@ export function activate(context: vscode.ExtensionContext) {
       chatView.addAssistantMarkdown(
         `I read **${opened} files** in your workspace and found **${found}**.` +
           (errorCount > 0
-            ? " They're listed under Problems above — click one for a full lesson."
+            ? " They're listed under Problems above — click any one and I'll explain what's wrong and how to fix it yourself."
             : " Keep coding — I'll keep watching for new ones.")
       );
-      if (errorCount > 0) {
-        chatView.addPrompt("Want me to fix the errors for you?", [
-          { label: "Yes, fix them", action: "fixAll" },
-          { label: "Not now", action: "dismiss" },
-        ]);
-      }
     } finally {
       chatView.setBusy(false);
       scanning = false;
@@ -318,6 +360,12 @@ export function activate(context: vscode.ExtensionContext) {
   let hasAutoScanned = false;
   chatView.onDidBecomeVisible(() => {
     watcher.refresh();
+    // The user is now looking at the sidebar, so clear the "unseen" badge.
+    // The captured-error cards stay in the transcript, still explainable.
+    if (unexplainedCount > 0) {
+      unexplainedCount = 0;
+      chatView.setBadge(0);
+    }
     if (!hasAutoScanned) {
       hasAutoScanned = true;
       void runScan();
@@ -329,17 +377,6 @@ export function activate(context: vscode.ExtensionContext) {
     "decoded.scanWorkspace",
     () => runScan()
   );
-
-  // The "Yes, fix them" / "Not now" buttons on the ask-to-fix card.
-  chatView.onPromptAction(async (action) => {
-    if (action === "fixAll") {
-      await fixAllErrors(context, chatView, watcher, history);
-    } else if (action === "dismiss") {
-      chatView.addAssistantMarkdown(
-        "Okay — they stay listed under Problems. Click one any time for an explanation, or hit **Scan** to ask again."
-      );
-    }
-  });
 
   // A click on a listed problem explains exactly that diagnostic.
   chatView.onExplainDiagnostic(async (key) => {
@@ -473,6 +510,11 @@ export function activate(context: vscode.ExtensionContext) {
     conversation.reset();
     chatView.clearTranscript();
     pendingContext.clear();
+    // The captured-error cards are gone with the transcript; drop their data
+    // and clear the badge so nothing dangles.
+    capturedErrors.clear();
+    unexplainedCount = 0;
+    chatView.setBadge(0);
   };
   chatView.onNewChat(startNewChat);
   const newChat = vscode.commands.registerCommand(
@@ -552,6 +594,7 @@ export function activate(context: vscode.ExtensionContext) {
   context.subscriptions.push(
     view,
     watcher,
+    terminalCapture,
     chatView,
     explain,
     setKey,

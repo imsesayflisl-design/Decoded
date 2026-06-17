@@ -1,6 +1,5 @@
 import * as vscode from "vscode";
 import type { Explanation, ReviewIssue, Diagnosis } from "./schema";
-import { applyFix, type ExplainSource } from "./applyFix";
 import type { HistoryStore } from "./history";
 import type { ErrorItem } from "./diagnostics";
 import { getActiveProvider, PROVIDERS } from "./providers";
@@ -21,7 +20,6 @@ type TranscriptItem =
       kind: "explanation";
       id: string;
       explanation: Explanation;
-      canApplyFix: boolean;
     }
   | { kind: "assistant"; id: string; markdown: string }
   | { kind: "error"; id: string; message: string }
@@ -35,7 +33,17 @@ type TranscriptItem =
       file: string;
       language: string;
     }
-  | { kind: "diagnosis"; id: string; diagnosis: Diagnosis };
+  | { kind: "diagnosis"; id: string; diagnosis: Diagnosis }
+  // A failed terminal command Decoded captured automatically. Nothing is sent
+  // to the AI until the user clicks Explain (`explained` flips the button off).
+  | {
+      kind: "captured";
+      id: string;
+      command: string;
+      output: string;
+      exitCode: number;
+      explained: boolean;
+    };
 
 interface HistorySummary {
   id: string;
@@ -97,15 +105,13 @@ export class DecodedChatViewProvider
   private transcript: TranscriptItem[] = [];
   private errors: ErrorItem[] = [];
   private busy = false;
-  // Per-explanation data for the "Apply fix" button.
-  private readonly fixes = new Map<
-    string,
-    { source: ExplainSource; corrected: string }
-  >();
 
   // Events the extension wires to the explain/chat flows.
   private readonly explainEmitter = new vscode.EventEmitter<string>();
   readonly onExplainDiagnostic = this.explainEmitter.event;
+  // Fired when the user clicks Explain on an auto-captured terminal error.
+  private readonly explainCaptureEmitter = new vscode.EventEmitter<string>();
+  readonly onExplainCapture = this.explainCaptureEmitter.event;
   private readonly followUpEmitter = new vscode.EventEmitter<{
     text: string;
     contextIds: string[];
@@ -170,16 +176,38 @@ export class DecodedChatViewProvider
     return id;
   }
 
-  addExplanation(explanation: Explanation, source?: ExplainSource): string {
+  addExplanation(explanation: Explanation): string {
     const id = nextId();
-    if (source) {
-      this.fixes.set(id, {
-        source,
-        corrected: explanation.howToFix.correctedCode,
-      });
-    }
-    this.push({ kind: "explanation", id, explanation, canApplyFix: !!source });
+    this.push({ kind: "explanation", id, explanation });
     return id;
+  }
+
+  // Renders a quiet card for a terminal command Decoded saw fail. No AI call —
+  // the card carries an Explain button that fires onExplainCapture when clicked.
+  addCapturedError(capture: {
+    command: string;
+    output: string;
+    exitCode: number;
+  }): string {
+    const id = nextId();
+    this.push({
+      kind: "captured",
+      id,
+      command: capture.command,
+      output: capture.output,
+      exitCode: capture.exitCode,
+      explained: false,
+    });
+    return id;
+  }
+
+  // Marks a captured-error card as explained so its Explain button disables.
+  markCaptureExplained(id: string): void {
+    const item = this.transcript.find((t) => t.id === id);
+    if (item && item.kind === "captured") {
+      item.explained = true;
+    }
+    this.post({ type: "captureExplained", id });
   }
 
   addAssistantMarkdown(markdown: string): string {
@@ -247,7 +275,6 @@ export class DecodedChatViewProvider
   // Clears the transcript (the "New Chat" command).
   clearTranscript(): void {
     this.transcript = [];
-    this.fixes.clear();
     this.post({ type: "reset" });
   }
 
@@ -259,6 +286,24 @@ export class DecodedChatViewProvider
   // Shows a context pill above the input (result of the + button picker).
   addContextChip(chip: ContextChip): void {
     this.post({ type: "contextChip", chip });
+  }
+
+  // Puts a count badge on the Decoded activity-bar icon (used to flag captured
+  // terminal errors waiting to be explained), or clears it when count is 0.
+  setBadge(count: number): void {
+    if (!this.view) {
+      return;
+    }
+    this.view.badge =
+      count > 0
+        ? {
+            value: count,
+            tooltip:
+              count === 1
+                ? "Decoded noticed a command that failed"
+                : `Decoded noticed ${count} commands that failed`,
+          }
+        : undefined;
   }
 
   // --- Internals. ---
@@ -362,16 +407,9 @@ export class DecodedChatViewProvider
           this.removeContextEmitter.fire(msg.id);
         }
         break;
-      case "applyFix":
-        if (typeof msg.messageId === "string") {
-          const fix = this.fixes.get(msg.messageId);
-          if (fix) {
-            await applyFix(fix.source, fix.corrected);
-          } else {
-            vscode.window.showWarningMessage(
-              "Decoded: No fix is available to apply."
-            );
-          }
+      case "explainCapture":
+        if (typeof msg.id === "string" && !this.busy) {
+          this.explainCaptureEmitter.fire(msg.id);
         }
         break;
       case "newChat":
@@ -408,11 +446,6 @@ export class DecodedChatViewProvider
           );
         }
         break;
-      case "runCommand":
-        if (typeof msg.command === "string" && msg.command.trim()) {
-          await this.runCommand(msg.command);
-        }
-        break;
     }
   }
 
@@ -434,23 +467,6 @@ export class DecodedChatViewProvider
         "Decoded: Couldn't open that location — the file may have changed."
       );
     }
-  }
-
-  // Runs a Diagnose fix command in the terminal, after confirmation.
-  private async runCommand(command: string): Promise<void> {
-    const choice = await vscode.window.showWarningMessage(
-      `Decoded: Run this command in the terminal?\n\n${command}`,
-      { modal: true },
-      "Run"
-    );
-    if (choice !== "Run") {
-      return;
-    }
-    const terminal =
-      vscode.window.activeTerminal ??
-      vscode.window.createTerminal("Decoded");
-    terminal.show();
-    terminal.sendText(command);
   }
 
   private getHtml(webview: vscode.Webview): string {
@@ -521,6 +537,7 @@ export class DecodedChatViewProvider
 
   dispose(): void {
     this.explainEmitter.dispose();
+    this.explainCaptureEmitter.dispose();
     this.followUpEmitter.dispose();
     this.pickContextEmitter.dispose();
     this.removeContextEmitter.dispose();

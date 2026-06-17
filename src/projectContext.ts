@@ -10,6 +10,9 @@ export interface ProjectContext {
   hasNodeModules: boolean;
   lockfile: string | null;
   packageManager: "npm" | "yarn" | "pnpm" | "unknown";
+  // Env config signal: helps spot "missing .env" style setup errors.
+  hasEnvFile: boolean;
+  hasEnvExample: boolean;
 }
 
 async function exists(uri: vscode.Uri): Promise<boolean> {
@@ -56,6 +59,16 @@ export async function gatherProjectContext(): Promise<
 
   const hasNodeModules = await exists(vscode.Uri.joinPath(root, "node_modules"));
 
+  // Env config: ".env"/".env.local" are the real files; ".env.example" is the
+  // template projects ship — having the template but not the real file is the
+  // classic "you forgot to create your .env" setup problem.
+  const hasEnvFile =
+    (await exists(vscode.Uri.joinPath(root, ".env"))) ||
+    (await exists(vscode.Uri.joinPath(root, ".env.local")));
+  const hasEnvExample =
+    (await exists(vscode.Uri.joinPath(root, ".env.example"))) ||
+    (await exists(vscode.Uri.joinPath(root, ".env.sample")));
+
   // Lockfile drives the package-manager choice.
   let lockfile: string | null = null;
   let packageManager: ProjectContext["packageManager"] = "unknown";
@@ -79,6 +92,8 @@ export async function gatherProjectContext(): Promise<
     hasNodeModules,
     lockfile,
     packageManager,
+    hasEnvFile,
+    hasEnvExample,
   };
 }
 
@@ -99,5 +114,7 @@ export function formatProjectContext(ctx: ProjectContext): string {
     `package manager: ${ctx.packageManager}`,
     `scripts: ${ctx.scripts.join(", ") || "none"}`,
     `dependencies: ${deps}`,
+    `.env present: ${ctx.hasEnvFile ? "yes" : "no"}`,
+    `.env.example present: ${ctx.hasEnvExample ? "yes" : "no"}`,
   ].join("\n");
 }

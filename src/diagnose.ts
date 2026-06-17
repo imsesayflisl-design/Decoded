@@ -59,7 +59,24 @@ export async function runDiagnose(
   if (!errorText || !errorText.trim()) {
     return; // nothing to diagnose / user cancelled
   }
-  errorText = cap(errorText.trim(), MAX_ERROR_LEN);
+  await diagnoseErrorText(context, chatView, errorText);
+}
+
+// Runs the full diagnosis for a piece of error text and renders the result.
+// Shared by the manual "Diagnose Error" command and the automatic terminal
+// capture flow. `title` is the line shown as the user's message in the chat
+// (defaults to the first line of the error). Returns true once it has rendered
+// something to the chat (so callers can clear any "explain me" affordance).
+export async function diagnoseErrorText(
+  context: vscode.ExtensionContext,
+  chatView: DecodedChatViewProvider,
+  rawErrorText: string,
+  title?: string
+): Promise<boolean> {
+  const errorText = cap(rawErrorText.trim(), MAX_ERROR_LEN);
+  if (!errorText) {
+    return false;
+  }
 
   const { provider, model } = getActiveProvider();
   const auth = await resolveOrPromptAuth(context, provider.id);
@@ -67,7 +84,7 @@ export async function runDiagnose(
     vscode.window.showWarningMessage(
       `Decoded: A ${provider.label} API key is required to diagnose errors.`
     );
-    return;
+    return false;
   }
   const opts = { apiKey: auth.apiKey, model, baseURL: auth.baseURL };
 
@@ -77,8 +94,8 @@ export async function runDiagnose(
     : "No workspace folder is open.";
 
   await chatView.focus();
-  chatView.addUserMessage(titleFrom(errorText));
-  chatView.setBusy(true, "Decoded is diagnosing the error…");
+  chatView.addUserMessage(title ?? titleFrom(errorText));
+  chatView.setBusy(true, "Decoded is figuring out what went wrong…");
   try {
     const result = await diagnoseError(provider, opts, {
       errorText,
@@ -93,9 +110,11 @@ export async function runDiagnose(
     } else {
       chatView.addDiagnosis(result);
     }
+    return true;
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     chatView.addErrorMessage(message);
+    return false;
   } finally {
     chatView.setBusy(false);
   }
