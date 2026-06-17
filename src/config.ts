@@ -11,12 +11,14 @@ const VALID_PROVIDERS: ProviderId[] = [
 ];
 
 export function getActiveProviderId(): ProviderId {
+  // Default to OpenRouter so a fresh install works on free models with no
+  // funded account (matches the hosted proxy's free-by-default setup).
   const raw = vscode.workspace
     .getConfiguration("decoded")
-    .get<string>("provider", "anthropic");
+    .get<string>("provider", "openrouter");
   return (VALID_PROVIDERS as string[]).includes(raw)
     ? (raw as ProviderId)
-    : "anthropic";
+    : "openrouter";
 }
 
 // The model configured for a provider, or undefined to use its default.
@@ -45,6 +47,15 @@ export function getTerminalAutoDetect(): boolean {
   return vscode.workspace
     .getConfiguration("decoded")
     .get<boolean>("terminal.autoDetect", true);
+}
+
+// Whether Decoded scans the codebase in the background (on open + on save) and
+// shows a notification when new errors appear. Capture/notify only — the AI
+// runs only when the user clicks a problem.
+export function getCodebaseAutoScan(): boolean {
+  return vscode.workspace
+    .getConfiguration("decoded")
+    .get<boolean>("codebase.autoScan", true);
 }
 
 export async function setActiveProviderId(id: ProviderId): Promise<void> {

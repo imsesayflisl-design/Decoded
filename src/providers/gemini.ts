@@ -16,12 +16,20 @@ function loadGenAI(): Promise<GenAIModule> {
   return genAIModule;
 }
 
-// Maps SDK errors to user-friendly messages.
-function toProviderError(genai: GenAIModule, err: unknown): never {
+// Maps SDK errors to user-friendly messages. `hosted` is true when the call
+// went through the Decoded proxy (no user key involved), so an auth failure
+// means the shared service is down — not that the user's key is bad.
+function toProviderError(
+  genai: GenAIModule,
+  err: unknown,
+  hosted: boolean
+): never {
   if (err instanceof genai.ApiError) {
     if (err.status === 401 || err.status === 403) {
       throw new ProviderError(
-        "Your Google API key was rejected. Run “Decoded: Set API Key” to update it."
+        hosted
+          ? "Decoded's free hosted AI is temporarily unavailable. Try again shortly, or run “Decoded: Set API Key” to use your own Google key."
+          : "Your Google API key was rejected. Run “Decoded: Set API Key” to update it."
       );
     }
     if (err.status === 429) {
@@ -89,7 +97,7 @@ export const geminiProvider: LLMProvider = {
       const response = await ai.models.generateContent(request);
       return response.text ?? "";
     } catch (err) {
-      toProviderError(genai, err);
+      toProviderError(genai, err, Boolean(opts.baseURL));
     }
   },
 };

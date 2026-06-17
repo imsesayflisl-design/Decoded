@@ -6,6 +6,7 @@
 // always excluding node_modules/.git/build output, capped to a token budget,
 // and transparent about which files were read.
 import * as vscode from "vscode";
+import { detectProjectType } from "./projectInfo";
 
 // Never read these — noise, huge, or not source. Mirrors common .gitignore.
 const EXCLUDE_GLOB =
@@ -159,7 +160,9 @@ async function retrieve(question: string): Promise<vscode.Uri[]> {
 }
 
 function isExcluded(uri: vscode.Uri): boolean {
-  return /[\\/](node_modules|\.git|dist|out|build|\.next|coverage)[\\/]/.test(
+  // Mirror EXCLUDE_GLOB so symbol-search results from build/test/vendor dirs
+  // (e.g. .vscode-test) never get read into an answer.
+  return /[\\/](node_modules|\.git|dist|out|build|\.next|\.nuxt|\.svelte-kit|coverage|\.vscode-test|vendor|__pycache__)[\\/]/.test(
     uri.fsPath
   );
 }
@@ -182,6 +185,17 @@ export async function gatherAskContext(
   const used = new Set<string>(excludeUris);
   let total = 0;
   let truncated = false;
+
+  // Lead with what kind of project this is, so the AI grounds its answer in the
+  // right stack (e.g. a VS Code extension vs. a React app) without being told.
+  try {
+    const project = await detectProjectType();
+    if (project) {
+      blocks.push(`PROJECT — ${project.label}: ${project.explanation}`);
+    }
+  } catch {
+    // Detection is best-effort; never block an answer on it.
+  }
 
   const addFile = async (
     uri: vscode.Uri,

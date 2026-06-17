@@ -2,7 +2,7 @@
   "name": "decoded",
   "displayName": "Decoded",
   "description": "Explains your coding errors to teach you, right where you code.",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "publisher": "Decoded",
   "author": {
     "name": "Idriss M. Sesay"
@@ -54,7 +54,7 @@
             "Google (Gemini)",
             "OpenRouter"
           ],
-          "default": "anthropic",
+          "default": "openrouter",
           "description": "Which AI provider Decoded uses to explain errors."
         },
         "decoded.anthropic.model": {
@@ -91,14 +91,21 @@
         "decoded.openrouter.model": {
           "type": "string",
           "enum": [
-            "openrouter/auto",
-            "meta-llama/llama-3.3-70b-instruct:free",
-            "deepseek/deepseek-chat-v3-0324:free",
+            "auto",
             "qwen/qwen3-coder:free",
+            "meta-llama/llama-3.3-70b-instruct:free",
+            "openrouter/auto",
             "qwen/qwen-2.5-72b-instruct"
           ],
-          "default": "openrouter/auto",
-          "description": "Model used when the provider is OpenRouter."
+          "enumDescriptions": [
+            "Auto (free): tries free models and falls back to another free model on rate-limit. $0.",
+            "Qwen3 Coder (free)",
+            "Llama 3.3 70B (free)",
+            "OpenRouter Auto (PAID — picks the best model; needs OpenRouter credits)",
+            "Qwen2.5 72B (PAID — needs OpenRouter credits)"
+          ],
+          "default": "auto",
+          "description": "Model used when the provider is OpenRouter. 'auto' stays free and falls back across free models on rate-limits."
         },
         "decoded.errors.includeWarnings": {
           "type": "boolean",
@@ -114,6 +121,11 @@
           "type": "boolean",
           "default": true,
           "description": "Automatically notice when a terminal command fails so Decoded can offer to explain it (it never runs the AI until you click Explain)."
+        },
+        "decoded.codebase.autoScan": {
+          "type": "boolean",
+          "default": true,
+          "description": "Read your codebase in the background (when the project opens and when you save) and show a notification when new errors appear. Decoded never runs the AI until you click a problem."
         }
       }
     },

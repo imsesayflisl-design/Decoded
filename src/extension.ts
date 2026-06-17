@@ -18,8 +18,10 @@ import {
   setActiveProviderId,
   setConfiguredModel,
   getTerminalAutoDetect,
+  getCodebaseAutoScan,
 } from "./config";
 import { scanWorkspace } from "./scan";
+import { detectProjectType } from "./projectInfo";
 import { runReviewFile } from "./review";
 import { runDiagnose, diagnoseErrorText } from "./diagnose";
 import { TerminalCaptureWatcher, type CapturedError } from "./terminalCapture";
@@ -91,6 +93,62 @@ export function activate(context: vscode.ExtensionContext) {
 
   // Auto-detected problems feed the sidebar list; the AI runs only on click.
   watcher.onDidChangeErrors((items) => chatView.setErrors(items));
+
+  // --- Background codebase scan + error notifications (capture only). ---
+
+  // Error keys we've already told the user about, so we notify only when NEW
+  // errors appear instead of nagging on every change. Keys that disappear are
+  // forgotten, so a re-introduced error notifies again.
+  const notifiedErrorKeys = new Set<string>();
+  const checkAndNotify = (): void => {
+    if (!getCodebaseAutoScan()) {
+      return;
+    }
+    const errors = watcher.current().filter((e) => e.severity === "error");
+    const currentKeys = new Set(errors.map((e) => e.key));
+    for (const key of [...notifiedErrorKeys]) {
+      if (!currentKeys.has(key)) {
+        notifiedErrorKeys.delete(key);
+      }
+    }
+    const fresh = errors.filter((e) => !notifiedErrorKeys.has(e.key));
+    if (fresh.length === 0) {
+      return; // nothing new to report
+    }
+    fresh.forEach((e) => notifiedErrorKeys.add(e.key));
+    const n = errors.length;
+    void vscode.window
+      .showWarningMessage(
+        `Decoded found ${n} error${n === 1 ? "" : "s"} in your code while reading your codebase. Open Decoded to see what's wrong and how to fix it.`,
+        "Open Decoded"
+      )
+      .then((choice) => {
+        if (choice === "Open Decoded") {
+          void chatView.focus();
+        }
+      });
+  };
+
+  // Read the codebase once on activation (silent — no chat focus or messages),
+  // then notify about anything found. Errors still only get explained on click.
+  if (getCodebaseAutoScan()) {
+    void (async () => {
+      try {
+        await scanWorkspace();
+      } catch {
+        // best-effort; the watcher still reports whatever opened
+      }
+      checkAndNotify();
+    })();
+  }
+
+  // Re-check after each save (diagnostics update a beat later).
+  const saveListener = vscode.workspace.onDidSaveTextDocument(() => {
+    if (!getCodebaseAutoScan()) {
+      return;
+    }
+    setTimeout(checkAndNotify, 800);
+  });
 
   // --- Auto-captured terminal errors (explain-on-click only). ---
 
@@ -334,6 +392,7 @@ export function activate(context: vscode.ExtensionContext) {
     chatView.setBusy(true, "Decoded is reading your codebase…");
     try {
       const opened = await scanWorkspace();
+      const project = await detectProjectType();
       const errors = watcher.current();
       const errorCount = errors.filter((e) => e.severity === "error").length;
       const warningCount = errors.length - errorCount;
@@ -344,8 +403,12 @@ export function activate(context: vscode.ExtensionContext) {
             : "no problems"
           : `${errorCount} error${errorCount === 1 ? "" : "s"}` +
             (warningCount > 0 ? ` and ${warningCount} warning${warningCount === 1 ? "" : "s"}` : "");
+      const projectLine = project
+        ? `This looks like a **${project.label}**. ${project.explanation}\n\n`
+        : "";
       chatView.addAssistantMarkdown(
-        `I read **${opened} files** in your workspace and found **${found}**.` +
+        projectLine +
+          `I read **${opened} files** in your workspace and found **${found}**.` +
           (errorCount > 0
             ? " They're listed under Problems above — click any one and I'll explain what's wrong and how to fix it yourself."
             : " Keep coding — I'll keep watching for new ones.")
@@ -476,16 +539,6 @@ export function activate(context: vscode.ExtensionContext) {
         // Provider didn't stream (or produced everything at once).
         chatView.addAssistantMarkdown(answer);
       }
-
-      // Be transparent about which files Decoded read to answer.
-      const read = [...attached.filesRead, ...auto.filesRead];
-      if (read.length > 0) {
-        const list = read.map((f) => `\`${f.label}\``).join(", ");
-        const note = auto.truncated
-          ? " _(some files were large, so I read the most relevant parts)_"
-          : "";
-        chatView.addAssistantMarkdown(`📎 Read to answer: ${list}${note}`);
-      }
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       chatView.addErrorMessage(message);
@@ -607,7 +660,8 @@ export function activate(context: vscode.ExtensionContext) {
     scanCommand,
     configListener,
     codeActions,
-    clearHistory
+    clearHistory,
+    saveListener
   );
 }
 
