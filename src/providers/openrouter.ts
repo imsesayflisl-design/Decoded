@@ -11,11 +11,42 @@ import {
 // regardless of baseURL.
 const OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1";
 
-// Maps SDK errors to user-friendly messages.
-function toProviderError(err: unknown): never {
+// Free models share a global upstream pool and frequently return 429. We retry
+// a couple of times, honouring the server's Retry-After (capped) so transient
+// rate-limits recover silently instead of erroring out to the user.
+const MAX_RATE_LIMIT_RETRIES = 2;
+const MAX_RETRY_WAIT_MS = 30000;
+
+// The Decoded "auto" model: instead of OpenRouter's PAID auto-router
+// (openrouter/auto), it tries these free models in order and falls back to the
+// next one on a rate-limit (429), so it stays $0 while dodging busy upstreams.
+const AUTO_MODEL = "auto";
+const FREE_MODELS = [
+  "qwen/qwen3-coder:free",
+  "meta-llama/llama-3.3-70b-instruct:free",
+];
+
+const sleep = (ms: number): Promise<void> =>
+  new Promise((resolve) => setTimeout(resolve, ms));
+
+// How long to wait before a retry: the Retry-After header if present (seconds),
+// otherwise a small default, capped so we never hang past the request timeout.
+function retryWaitMs(err: InstanceType<typeof OpenAI.RateLimitError>): number {
+  const header = err.headers?.get("retry-after");
+  const seconds = header ? Number(header) : NaN;
+  const ms = Number.isFinite(seconds) ? seconds * 1000 : 3000;
+  return Math.min(Math.max(ms, 1000), MAX_RETRY_WAIT_MS);
+}
+
+// Maps SDK errors to user-friendly messages. `hosted` is true when the call
+// went through the Decoded proxy (no user key involved), so an auth failure
+// means the shared service is down — not that the user's key is bad.
+function toProviderError(err: unknown, hosted: boolean): never {
   if (err instanceof OpenAI.AuthenticationError) {
     throw new ProviderError(
-      "Your OpenRouter API key was rejected. Run “Decoded: Set API Key” to update it."
+      hosted
+        ? "Decoded's free hosted AI is temporarily unavailable. Try again shortly, or run “Decoded: Set API Key” to use your own OpenRouter key."
+        : "Your OpenRouter API key was rejected. Run “Decoded: Set API Key” to update it."
     );
   }
   if (err instanceof OpenAI.RateLimitError) {
@@ -33,13 +64,15 @@ export const openrouterProvider: LLMProvider = {
   id: "openrouter",
   label: "OpenRouter",
   models: [
-    "openrouter/auto",
-    "meta-llama/llama-3.3-70b-instruct:free",
-    "deepseek/deepseek-chat-v3-0324:free",
+    "auto",
     "qwen/qwen3-coder:free",
+    "meta-llama/llama-3.3-70b-instruct:free",
+    "openrouter/auto",
     "qwen/qwen-2.5-72b-instruct",
   ],
-  defaultModel: "openrouter/auto",
+  // "auto" (smart free routing) by default so a fresh install / hosted mode
+  // works with no funded account and survives a busy free model.
+  defaultModel: AUTO_MODEL,
   keyPlaceholder: "sk-or-v1-...",
 
   async complete(
@@ -67,11 +100,13 @@ export const openrouterProvider: LLMProvider = {
         content: m.content,
       })),
     ];
-    try {
+
+    // One request against a specific model id; returns the reply text.
+    const attemptWith = async (model: string): Promise<string> => {
       // Plain-text answers stream so the reply starts appearing right away.
       if (onDelta && !req.jsonSchema) {
         const stream = await client.chat.completions.create({
-          model: opts.model,
+          model,
           max_completion_tokens: req.maxTokens,
           messages,
           stream: true,
@@ -87,7 +122,7 @@ export const openrouterProvider: LLMProvider = {
         return full;
       }
       const completion = await client.chat.completions.create({
-        model: opts.model,
+        model,
         max_completion_tokens: req.maxTokens,
         messages,
         // Strict structured output guarantees parseable JSON when requested.
@@ -107,8 +142,29 @@ export const openrouterProvider: LLMProvider = {
           : {}),
       });
       return completion.choices[0]?.message?.content ?? "";
-    } catch (err) {
-      toProviderError(err);
+    };
+
+    // "auto" tries each free model; any other id is used as-is. On a 429 we move
+    // to the next candidate, and once every candidate is rate-limited we wait
+    // out the Retry-After and try the whole set again.
+    const candidates = opts.model === AUTO_MODEL ? FREE_MODELS : [opts.model];
+    let lastRateLimit: InstanceType<typeof OpenAI.RateLimitError> | undefined;
+    for (let pass = 0; pass <= MAX_RATE_LIMIT_RETRIES; pass++) {
+      for (const model of candidates) {
+        try {
+          return await attemptWith(model);
+        } catch (err) {
+          if (err instanceof OpenAI.RateLimitError) {
+            lastRateLimit = err;
+            continue; // busy upstream — try the next free model
+          }
+          toProviderError(err, Boolean(opts.baseURL));
+        }
+      }
+      if (lastRateLimit && pass < MAX_RATE_LIMIT_RETRIES) {
+        await sleep(retryWaitMs(lastRateLimit));
+      }
     }
+    toProviderError(lastRateLimit, Boolean(opts.baseURL));
   },
 };

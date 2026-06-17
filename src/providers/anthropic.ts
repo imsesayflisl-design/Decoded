@@ -14,11 +14,15 @@ function responseText(message: Anthropic.Message): string {
     .join("");
 }
 
-// Maps SDK errors to user-friendly messages.
-function toProviderError(err: unknown): never {
+// Maps SDK errors to user-friendly messages. `hosted` is true when the call
+// went through the Decoded proxy (no user key involved), so an auth failure
+// means the shared service is down — not that the user's key is bad.
+function toProviderError(err: unknown, hosted: boolean): never {
   if (err instanceof Anthropic.AuthenticationError) {
     throw new ProviderError(
-      "Your Anthropic API key was rejected. Run “Decoded: Set API Key” to update it."
+      hosted
+        ? "Decoded's free hosted AI is temporarily unavailable. Try again shortly, or run “Decoded: Set API Key” to use your own Anthropic key."
+        : "Your Anthropic API key was rejected. Run “Decoded: Set API Key” to update it."
     );
   }
   if (err instanceof Anthropic.RateLimitError) {
@@ -91,7 +95,7 @@ export const anthropicProvider: LLMProvider = {
       });
       return responseText(message);
     } catch (err) {
-      toProviderError(err);
+      toProviderError(err, Boolean(opts.baseURL));
     }
   },
 };
