@@ -2,7 +2,7 @@
   "name": "decoded",
   "displayName": "Decoded",
   "description": "Explains your coding errors to teach you, right where you code.",
-  "version": "0.0.9",
+  "version": "0.1.0",
   "publisher": "Decoded",
   "author": {
     "name": "Idriss M. Sesay"
@@ -42,32 +42,61 @@
       "properties": {
         "decoded.provider": {
           "type": "string",
-          "enum": ["anthropic", "openai", "gemini", "openrouter"],
-          "enumItemLabels": ["Anthropic (Claude)", "OpenAI (GPT)", "Google (Gemini)", "OpenRouter"],
+          "enum": [
+            "anthropic",
+            "openai",
+            "gemini",
+            "openrouter"
+          ],
+          "enumItemLabels": [
+            "Anthropic (Claude)",
+            "OpenAI (GPT)",
+            "Google (Gemini)",
+            "OpenRouter"
+          ],
           "default": "anthropic",
           "description": "Which AI provider Decoded uses to explain errors."
         },
         "decoded.anthropic.model": {
           "type": "string",
-          "enum": ["claude-opus-4-8", "claude-fable-5", "claude-sonnet-4-6", "claude-haiku-4-5"],
+          "enum": [
+            "claude-opus-4-8",
+            "claude-fable-5",
+            "claude-sonnet-4-6",
+            "claude-haiku-4-5"
+          ],
           "default": "claude-opus-4-8",
           "description": "Claude model used when the provider is Anthropic."
         },
         "decoded.openai.model": {
           "type": "string",
-          "enum": ["gpt-5.5", "gpt-5.4", "gpt-5.4-mini"],
+          "enum": [
+            "gpt-5.5",
+            "gpt-5.4",
+            "gpt-5.4-mini"
+          ],
           "default": "gpt-5.4-mini",
           "description": "GPT model used when the provider is OpenAI."
         },
         "decoded.gemini.model": {
           "type": "string",
-          "enum": ["gemini-3.5-flash", "gemini-2.5-pro", "gemini-3.1-flash-lite"],
+          "enum": [
+            "gemini-3.5-flash",
+            "gemini-2.5-pro",
+            "gemini-3.1-flash-lite"
+          ],
           "default": "gemini-3.5-flash",
           "description": "Gemini model used when the provider is Google."
         },
         "decoded.openrouter.model": {
           "type": "string",
-          "enum": ["openrouter/auto", "meta-llama/llama-3.3-70b-instruct:free", "deepseek/deepseek-chat-v3-0324:free", "qwen/qwen3-coder:free", "qwen/qwen-2.5-72b-instruct"],
+          "enum": [
+            "openrouter/auto",
+            "meta-llama/llama-3.3-70b-instruct:free",
+            "deepseek/deepseek-chat-v3-0324:free",
+            "qwen/qwen3-coder:free",
+            "qwen/qwen-2.5-72b-instruct"
+          ],
           "default": "openrouter/auto",
           "description": "Model used when the provider is OpenRouter."
         },
